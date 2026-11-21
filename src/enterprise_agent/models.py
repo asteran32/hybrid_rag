@@ -32,3 +32,18 @@ class DocumentChunk(BaseModel):
     start_offset: int
     end_offset: int
     content: str
+
+
+class SearchFilter(BaseModel):
+    source_type: str | None = None
+    metadata: dict[str, JsonValue] = Field(default_factory=dict)
+
+
+class SearchHit(DocumentChunk):
+    source_type: str
+    source_path: str
+    title: str | None
+    metadata: dict[str, JsonValue]
+    score: float
+    rank: PositiveInt
+    component_ranks: dict[str, int]

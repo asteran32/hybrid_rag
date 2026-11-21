@@ -37,6 +37,26 @@ def test_reingest_and_rechunk(db, documents):
     assert db.execute("SELECT content FROM documents").fetchone()["content"] == ""
 
 
+def test_overlap_change_preserves_vectors_for_unchanged_windows(
+    db, documents, embedder
+):
+    from enterprise_agent.storage.embeddings import index_embeddings
+
+    doc = documents[0].model_copy(update={"content": "abcdefghijklmnop"})
+    for overlap, new_vectors in [(0, 4), (2, 3), (0, 0)]:
+        ingest(db, [doc], ChunkSettings(size=4, overlap=overlap), limit=1, batch_size=1)
+        assert (
+            index_embeddings(db, embedder, max_chunks=20, batch_size=2) == new_vectors
+        )
+        rows = db.execute(
+            "SELECT position, content FROM chunks ORDER BY position"
+        ).fetchall()
+        assert [r["content"] for r in rows] == [
+            doc.content[i : i + 4] for i in range(0, 13, 4 - overlap)
+        ]
+        assert [r["position"] for r in rows] == list(range(len(rows)))
+
+
 def test_invalid_record_does_not_undo_valid_batch_members(db, documents):
     bad = documents[0].model_copy(update={"content": "invalid\x00content"})
     result = ingest(db, [bad, documents[1]], ChunkSettings(), limit=None, batch_size=8)

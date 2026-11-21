@@ -20,3 +20,12 @@ CREATE TABLE IF NOT EXISTS chunks (
     search_vector tsvector NOT NULL,
     UNIQUE(document_id, position) DEFERRABLE INITIALLY DEFERRED
 );
+CREATE TABLE IF NOT EXISTS chunk_embeddings (
+    model_key text NOT NULL,
+    chunk_id text NOT NULL REFERENCES chunks ON DELETE CASCADE,
+    dimensions integer NOT NULL,
+    embedding vector NOT NULL,
+    CHECK (vector_dims(embedding) = dimensions),
+    PRIMARY KEY (model_key, chunk_id)
+);
+CREATE INDEX IF NOT EXISTS embeddings_chunk_idx ON chunk_embeddings(chunk_id);

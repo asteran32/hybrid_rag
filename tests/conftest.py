@@ -47,3 +47,25 @@ def documents():
             content="Today's lunch includes fresh tomato soup.",
         ),
     ]
+
+
+@pytest.fixture
+def embedder():
+    from enterprise_agent.embeddings import ModelSpec
+
+    class FakeEmbeddings:
+        spec = ModelSpec(provider="test", model="finance-food", dimensions=2)
+
+        def __init__(self):
+            self.calls = []
+
+        def embed(self, texts: list[str]) -> list[list[float]]:
+            self.calls.append(list(texts))
+            return [
+                [0.1, 1.0]
+                if any(w in t.lower() for w in ("soup", "lunch", "meal"))
+                else [1.0, 0.1]
+                for t in texts
+            ]
+
+    return FakeEmbeddings()
