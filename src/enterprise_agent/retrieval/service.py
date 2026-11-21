@@ -1,6 +1,6 @@
 from typing import Protocol
 
-from enterprise_agent.embeddings import Embedder, checked_vectors
+from enterprise_agent.embeddings import Embedder, checked_vectors, configured_embedder
 from enterprise_agent.models import SearchFilter, SearchHit
 from enterprise_agent.retrieval.fusion import reciprocal_rank_fusion
 from enterprise_agent.storage.search import SearchStore
@@ -66,3 +66,18 @@ class HybridRetriever:
             "dense": self.dense.search(query, depth, filters),
         }
         return reciprocal_rank_fusion(ranks, k, self.constant)
+
+
+def build_retriever(
+    store: SearchStore, method: str, *, candidates: int, constant: int
+) -> Retriever:
+    if method == "keyword":
+        return KeywordRetriever(store)
+    if method not in {"dense", "hybrid"}:
+        raise ValueError(f"unknown retrieval method: {method}")
+    dense = DenseRetriever(store, configured_embedder())
+    if method == "dense":
+        return dense
+    return HybridRetriever(
+        KeywordRetriever(store), dense, candidates=candidates, constant=constant
+    )

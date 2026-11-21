@@ -9,6 +9,9 @@ import psycopg
 from dotenv import load_dotenv
 
 from enterprise_agent.embeddings import configured_embedder
+from enterprise_agent.generation.chat import GenerationUnavailable
+from enterprise_agent.generation.contracts import AnswerRequest
+from enterprise_agent.generation.runtime import run_answer
 from enterprise_agent.ingestion.loader import SOURCES, load_documents
 from enterprise_agent.ingestion.pipeline import ingest
 from enterprise_agent.models import ChunkSettings, SearchFilter
@@ -16,6 +19,7 @@ from enterprise_agent.retrieval.service import (
     DenseRetriever,
     HybridRetriever,
     KeywordRetriever,
+    build_retriever,
 )
 from enterprise_agent.storage.db import build_lexical_index, connect, initialize
 from enterprise_agent.storage.embeddings import index_embeddings
@@ -50,20 +54,26 @@ def parser() -> argparse.ArgumentParser:
     index.add_argument("--max-chunks", type=positive, default=100)
     index.add_argument("--batch-size", type=positive, default=32)
     search = commands.add_parser("search")
-    search.add_argument("query")
-    search.add_argument(
-        "--method", choices=("keyword", "dense", "hybrid"), default="keyword"
+    answer = commands.add_parser(
+        "answer", help="generate an answer with verified source citations"
     )
-    search.add_argument("--top-k", type=positive, default=10)
-    search.add_argument("--source-type", choices=SOURCES)
-    search.add_argument("--metadata", default="{}", help="JSONB containment filter")
+    for command, method, top_k in ((search, "keyword", 10), (answer, "hybrid", 5)):
+        command.add_argument("query")
+        command.add_argument(
+            "--method", choices=("keyword", "dense", "hybrid"), default=method
+        )
+        command.add_argument("--top-k", type=positive, default=top_k)
+        command.add_argument("--source-type", choices=SOURCES)
+        command.add_argument(
+            "--metadata", default="{}", help="JSONB containment filter"
+        )
     evaluation = commands.add_parser("evaluate")
     evaluation.add_argument("--questions", required=True, type=Path)
     evaluation.add_argument("--limit", type=positive, default=20)
     evaluation.add_argument("--chunk-depth", type=positive, default=50)
     evaluation.add_argument("--dataset-version", required=True)
     evaluation.add_argument("--output", required=True, type=Path)
-    for command in (search, evaluation):
+    for command in (search, answer, evaluation):
         command.add_argument("--rrf-constant", type=int, default=60)
         command.add_argument("--candidates", type=positive, default=50)
     return p
@@ -148,18 +158,12 @@ def search(db: psycopg.Connection, args: argparse.Namespace) -> None:
     filters = SearchFilter(
         source_type=args.source_type, metadata=json.loads(args.metadata)
     )
-    store = SearchStore(db)
-    keyword = KeywordRetriever(store)
-    retriever = keyword
-    if args.method != "keyword":
-        dense = DenseRetriever(store, configured_embedder())
-        retriever = (
-            dense
-            if args.method == "dense"
-            else HybridRetriever(
-                keyword, dense, candidates=args.candidates, constant=args.rrf_constant
-            )
-        )
+    retriever = build_retriever(
+        SearchStore(db),
+        args.method,
+        candidates=args.candidates,
+        constant=args.rrf_constant,
+    )
     hits = retriever.search(args.query, args.top_k, filters)
     print(json.dumps([hit.model_dump() for hit in hits], ensure_ascii=False, indent=2))
 
@@ -198,9 +202,20 @@ def main() -> int:
                     print(json.dumps({"embeddings_written": count}))
             elif args.command == "search":
                 search(db, args)
+            elif args.command == "answer":
+                request = AnswerRequest(
+                    question=args.query,
+                    method=args.method,
+                    top_k=args.top_k,
+                    source_type=args.source_type,
+                    metadata=json.loads(args.metadata),
+                    candidates=args.candidates,
+                    rrf_constant=args.rrf_constant,
+                )
+                print(run_answer(db, request).model_dump_json(indent=2))
             elif args.command == "evaluate":
                 run_evaluation(db, args)
         return 0
-    except (ValueError, OSError, psycopg.Error) as exc:
+    except (ValueError, OSError, psycopg.Error, GenerationUnavailable) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

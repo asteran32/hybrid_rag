@@ -1,5 +1,11 @@
+import json
+import sys
+from contextlib import nullcontext
+
 import pytest
 
+from enterprise_agent import cli
+from enterprise_agent.generation import runtime
 from enterprise_agent.generation.contracts import (
     AnswerDraft,
     AnswerRequest,
@@ -137,3 +143,47 @@ def test_no_hits_never_invokes_generator_or_discloses_reason_for_missing_documen
         )
         both.append(out.model_dump())
     assert both[0] == both[1] and both[0]["generation"] is None
+
+
+@pytest.mark.parametrize("method", ["keyword", "dense", "hybrid"])
+def test_answer_cli_all_retrievers_return_same_contract(
+    db, documents, embedder, monkeypatch, capsys, method
+):
+    from enterprise_agent.retrieval import service
+    from enterprise_agent.storage.embeddings import index_embeddings
+
+    ingest(db, documents, ChunkSettings(), limit=2, batch_size=2)
+    index_embeddings(db, embedder, max_chunks=2, batch_size=2)
+    monkeypatch.setenv("ANSWER_ACCESS_SCOPE", SCOPE.model_dump_json())
+    monkeypatch.setattr(cli, "connect", lambda: nullcontext(db))
+    monkeypatch.setattr(service, "configured_embedder", lambda: embedder)
+    monkeypatch.setattr(runtime, "generate", lambda *_: receipts_draft())
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "enterprise-agent",
+            "answer",
+            REQUEST.question,
+            "--method",
+            method,
+            "--top-k",
+            "1",
+        ],
+    )
+    assert cli.main() == 0
+    out = json.loads(capsys.readouterr().out)
+    assert (
+        out["status"] == "answered"
+        and out["answer"] == "Business travel receipts are required."
+    )
+    assert out["claims"][0]["citations"][0]["document_id"] == "dsid_one"
+
+
+def test_cli_reports_bad_trusted_policy_without_generating(db, monkeypatch, capsys):
+    monkeypatch.setenv("ANSWER_ACCESS_SCOPE", '{"source_typess":["slack"]}')
+    monkeypatch.setattr(cli, "connect", lambda: nullcontext(db))
+    monkeypatch.setattr(sys, "argv", ["enterprise-agent", "answer", REQUEST.question])
+    assert cli.main() == 1
+    captured = capsys.readouterr()
+    assert "ANSWER_ACCESS_SCOPE" in captured.err and captured.out == ""
