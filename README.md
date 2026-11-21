@@ -4,6 +4,8 @@
 >
 > **구현 상태** · Phase 1 데이터 수집, Phase 2 검색·평가, Phase 3 출처 기반 답변을 구현했습니다. CLI와 HTTP API에서 답변의 각 주장을 원본 문서의 인용 구간까지 추적할 수 있습니다. LangGraph 기반 다단계 검색은 Phase 4입니다.
 
+[워크플로우와 검증 그래프 보기 (HTML)](experiments/workflow-report.html) · 파일을 내려받아 브라우저에서 열면 수집·답변 단계와 표본 실험 결과를 살펴볼 수 있습니다.
+
 ## Overview
 
 **Enterprise Knowledge Agent**는 기업의 여러 내부 데이터 소스에 흩어진 지식을 검색하고, 근거 문서를 확인한 뒤, **출처가 명확한 답변**을 제공하기 위한 프로젝트입니다. [EnterpriseRAG-Bench](https://github.com/onyx-dot-app/EnterpriseRAG-Bench)의 합성 기업 데이터로 일반 RAG와 Agentic Retrieval을 비교·평가합니다.
