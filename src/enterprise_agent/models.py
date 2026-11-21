@@ -1,6 +1,13 @@
 from typing import Annotated, Self
 
-from pydantic import BaseModel, Field, JsonValue, PositiveInt, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    PositiveInt,
+    model_validator,
+)
 
 DocumentID = Annotated[str, Field(pattern=r"^dsid_[A-Za-z0-9_-]+$")]
 
@@ -34,15 +41,27 @@ class DocumentChunk(BaseModel):
     content: str
 
 
+class AnswerScope(BaseModel):
+    """Trusted operator policy. An empty source or document allowlist grants no access."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    source_types: tuple[str, ...]
+    document_ids: tuple[DocumentID, ...] | None = None
+
+
 class SearchFilter(BaseModel):
     source_type: str | None = None
     metadata: dict[str, JsonValue] = Field(default_factory=dict)
+    scope: AnswerScope | None = None
 
 
-class SearchHit(DocumentChunk):
+class EvidenceChunk(DocumentChunk):
     source_type: str
     source_path: str
     title: str | None
+
+
+class SearchHit(EvidenceChunk):
     metadata: dict[str, JsonValue]
     score: float
     rank: PositiveInt

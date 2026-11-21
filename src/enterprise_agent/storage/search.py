@@ -3,12 +3,13 @@ import re
 from psycopg import Connection
 from psycopg.types.json import Jsonb
 
-from enterprise_agent.models import SearchFilter, SearchHit
+from enterprise_agent.models import EvidenceChunk, SearchFilter, SearchHit
 
-PROJECTION = """
+EVIDENCE_FIELDS = """
     c.document_id, c.chunk_id, c.position, c.start_offset, c.end_offset, c.content,
-    d.source_type, d.source_path, d.title, d.metadata
+    d.source_type, d.source_path, d.title
 """
+PROJECTION = EVIDENCE_FIELDS + ", d.metadata"
 
 
 def _filters(filters: SearchFilter | None) -> tuple[str, list]:
@@ -19,6 +20,12 @@ def _filters(filters: SearchFilter | None) -> tuple[str, list]:
     if filters and filters.metadata:
         conditions.append("d.metadata @> %s")
         values.append(Jsonb(filters.metadata))
+    if filters and filters.scope is not None:
+        conditions.append("d.source_type = ANY(%s::text[])")
+        values.append(list(filters.scope.source_types))
+        if filters.scope.document_ids is not None:
+            conditions.append("d.document_id = ANY(%s::text[])")
+            values.append(list(filters.scope.document_ids))
     return "".join(f" AND {condition}" for condition in conditions), values
 
 
@@ -32,6 +39,27 @@ def _hits(rows: list[dict], method: str) -> list[SearchHit]:
 class SearchStore:
     def __init__(self, db: Connection):
         self.db = db
+
+    def load_evidence(
+        self, chunk_ids: list[str], filters: SearchFilter
+    ) -> dict[str, EvidenceChunk]:
+        """Load only authorized chunks whose saved span still matches the parent text."""
+        if filters.scope is None:
+            raise ValueError("answer evidence requires an access scope")
+        if not chunk_ids:
+            return {}
+        where, params = _filters(filters)
+        rows = self.db.execute(
+            f"""
+            SELECT {EVIDENCE_FIELDS} FROM chunks c JOIN documents d USING(document_id)
+            WHERE c.chunk_id = ANY(%s::text[]) {where}
+              AND c.start_offset >= 0 AND c.end_offset <= char_length(d.content)
+              AND c.content = substring(d.content FROM c.start_offset + 1
+                                        FOR c.end_offset - c.start_offset)
+            """,
+            [chunk_ids, *params],
+        )
+        return {row["chunk_id"]: EvidenceChunk(**row) for row in rows}
 
     def keyword(
         self, query: str, k: int, filters: SearchFilter | None
