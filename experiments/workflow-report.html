@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>구현 및 검증 보고서 · Enterprise Knowledge Agent</title>
+  <style>
+    :root {
+      --paper: #fbfbf8;
+      --ink: #172332;
+      --muted: #526075;
+      --rule: #d7dcdF;
+      --blue: #264fc4;
+      --plot-blue: #4168db;
+      --night: #142139;
+      --sans: Inter, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+      --mono: "IBM Plex Mono", "SFMono-Regular", Consolas, Menlo, monospace;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.55 var(--sans); word-break: keep-all; overflow-wrap: break-word; }
+    h1, h2, h3, p, figure, dl, dd { margin: 0; }
+    button, select { font: inherit; }
+    button, select, summary { cursor: pointer; }
+    a { color: var(--blue); text-underline-offset: 3px; }
+    button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visible { outline: 3px solid #5b83ef; outline-offset: 3px; }
+    [hidden] { display: none !important; }
+    .wrap { width: min(1232px, calc(100% - clamp(32px, 9vw, 136px))); margin-inline: auto; }
+    .mono, code, time { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+    .sr-only, .skip:not(:focus) { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    .skip:focus { position: fixed; z-index: 20; top: 8px; left: 8px; padding: 8px 14px; background: white; }
+    .mast { position: sticky; z-index: 5; top: 0; background: var(--paper); border-bottom: 1px solid var(--rule); }
+    .mast-inner { min-height: 63px; display: flex; justify-content: space-between; align-items: center; gap: 20px; }
+    .brand { display: inline-flex; gap: 11px; align-items: center; color: var(--ink); text-decoration: none; font-size: 17px; font-weight: 720; letter-spacing: -.045em; }
+    .mark { position: relative; width: 27px; height: 29px; flex: none; }
+    .mark i { position: absolute; left: 1px; width: 25px; height: 14px; background: var(--blue); clip-path: polygon(50% 0,100% 36%,100% 58%,50% 100%,0 58%,0 36%); }
+    .mark i:nth-child(1) { top: 14px; background: #8499d3; }
+    .mark i:nth-child(2) { top: 8px; background: #4f70c6; }
+    .mark i:nth-child(3) { top: 2px; }
+    .mast nav { display: flex; align-items: stretch; align-self: stretch; gap: 28px; }
+    .mast nav a { display: flex; align-items: center; position: relative; text-decoration: none; color: var(--muted); font-size: 13px; font-weight: 640; }
+    .mast nav a:hover, .mast nav a[aria-current] { color: var(--blue); }
+    .mast nav a[aria-current]::after { content: ""; position: absolute; bottom: 0; width: 100%; height: 2px; background: var(--blue); }
+    main { padding-bottom: 48px; }
+    section[id] { scroll-margin-top: 86px; }
+    .intro { padding-top: clamp(28px, 2.8vw, 40px); }
+    .intro-meta { display: flex; align-items: center; justify-content: space-between; gap: 16px; color: var(--muted); font-size: 12px; }
+    .scope { font: 650 12px/1.4 var(--mono); color: var(--blue); letter-spacing: .035em; }
+    .scope::before { content: ""; display: inline-block; width: 18px; height: 2px; background: currentColor; vertical-align: middle; margin-right: 8px; }
+    .date { display: inline-flex; gap: 8px; align-items: center; }
+    h1 { margin: 12px 0 8px; font-size: clamp(35px, 4.5vw, 58px); line-height: 1.16; letter-spacing: -.065em; font-weight: 770; }
+    .intro > p { color: var(--muted); font-size: clamp(15px, 1.25vw, 17px); }
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); padding: 19px 0 20px; margin-top: 28px; border-block: 1px solid var(--rule); }
+    .stat { padding-inline: clamp(12px, 2.6vw, 36px); border-left: 1px solid var(--rule); }
+    .stat:first-child { padding-left: 0; border-left: 0; }
+    .stat dt { font-size: 13px; color: var(--muted); font-weight: 650; }
+    .stat dd { font-size: clamp(29px, 3vw, 39px); line-height: 1.2; font-weight: 650; letter-spacing: -.055em; font-variant-numeric: tabular-nums; }
+    .stat dd small { color: var(--muted); font-size: .51em; letter-spacing: -.035em; font-weight: 520; }
+    .stat .stat-note { margin-top: 3px; color: var(--muted); font-size: 12px; line-height: 1.45; letter-spacing: 0; font-weight: 440; }
+    .report-section { margin-top: clamp(30px, 3vw, 42px); }
+    .section-head { display: flex; justify-content: space-between; gap: 12px 20px; align-items: center; margin-bottom: 14px; }
+    h2 { font-size: clamp(23px, 2.2vw, 30px); line-height: 1.28; letter-spacing: -.055em; }
+    .section-note { color: var(--muted); font-size: 13px; }
+    .switch { display: inline-flex; gap: 2px; border: 1px solid var(--rule); background: #eff1f1; padding: 3px; border-radius: 7px; }
+    .switch button { border: 0; border-radius: 4px; background: transparent; color: var(--muted); padding: 5px 15px; min-height: 32px; font-size: 13px; font-weight: 650; }
+    .switch button[aria-pressed="true"] { color: var(--blue); background: #fff; box-shadow: 0 1px 3px #1c2d4820; }
+    .diagram { border-radius: 12px; overflow: hidden; border: 1px solid #23334e; background: var(--night); color: #f8faff; }
+    .board { padding: 19px clamp(15px, 2.3vw, 34px) 21px; background-color: var(--night); background-image: radial-gradient(#c4d4ef24 .85px, transparent .85px); background-size: 16px 16px; }
+    .board-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 17px; }
+    .board-label { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 650; color: #e4edff; }
+    .board-label::before { content: ""; width: 7px; height: 7px; background: #91b0ff; border-radius: 2px; }
+    .board-meta { font: 12px/1.4 var(--mono); color: #b5c8ea; }
+    .graph-stage { position: relative; isolation: isolate; }
+    .graph-stage.has-bypass { padding-bottom: 18px; }
+    .graph-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
+    .flow-nodes { display: grid; grid-template-columns: repeat(var(--columns, 6), minmax(0,1fr)); grid-template-rows: repeat(4, 27px); gap: 10px clamp(18px, 2.5vw, 42px); align-items: center; }
+    .flow-node { grid-column: var(--col); grid-row: var(--row) / span 2; width: 100%; min-width: 0; display: flex; gap: 9px; align-items: center; text-align: left; padding: 9px clamp(8px, 1vw, 14px); min-height: 56px; border: 1px solid #596b87; border-radius: 7px; background: #20314b; color: #f1f5ff; transition: background-color .16s ease, border-color .16s ease; }
+    .flow-node:hover { border-color: #a9bfea; background: #2b405f; }
+    .flow-node[aria-pressed="true"] { background: #3055b7; border-color: #a8c1ff; box-shadow: 0 0 0 3px #819df123; }
+    .flow-node:focus-visible { outline-color: #ffdb95; }
+    .node-copy { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+    .node-copy strong { font: 680 14px/1.25 var(--sans); }
+    .node-copy small { color: #c4d0e2; font: 10px/1.35 var(--mono); overflow-wrap: anywhere; }
+    .flow-node[aria-pressed="true"] small { color: #e7edff; }
+    .symbol { display: inline-grid; place-items: center; width: 18px; flex: none; color: #c2d6ff; font: 17px/1 var(--mono); }
+    .flow-node[aria-pressed="true"] .symbol { color: white; }
+    .bypass-key { display: flex; align-items: center; gap: 9px; margin-top: 6px; font-size: 12px; color: #c4d0e2; }
+    .bypass-key::before { content: ""; width: 23px; flex: none; border-top: 1.5px dashed #9babca; }
+    .inspector { display: grid; grid-template-columns: minmax(116px,.7fr) minmax(0,3.2fr) minmax(130px,1.1fr); align-items: center; gap: 18px; padding: 15px clamp(15px, 2.3vw, 34px); border-top: 1px solid #425472; background: #1b2b45; }
+    .inspector small { display: block; font-size: 11px; color: #bbcae3; margin-bottom: 2px; }
+    .inspector strong { font-size: 17px; line-height: 1.3; }
+    .inspector p { color: #e1e9f7; font-size: 13px; line-height: 1.55; }
+    .inspector .out { border-left: 1px solid #465975; padding-left: 18px; }
+    .inspector .out span { font-size: 13px; }
+    .caption { color: var(--muted); font-size: 12px; margin-top: 8px; }
+    .fallback { color: var(--ink); }
+    .results-grid { border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); display: grid; grid-template-columns: 1.24fr 1fr; }
+    .metric-panel { min-width: 0; padding: 22px clamp(20px, 3.2vw, 44px) 19px 0; }
+    .metric-panel + .metric-panel { padding-right: 0; padding-left: clamp(20px, 3.2vw, 44px); border-left: 1px solid var(--rule); }
+    .chart-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 34px; }
+    h3 { font-size: 19px; font-weight: 690; letter-spacing: -.04em; }
+    .chart-head select { max-width: 100%; color: var(--ink); background: #fff; border: 1px solid #bbc6d3; border-radius: 5px; padding: 5px 6px; font: 12px/1.4 var(--mono), var(--sans); min-height: 32px; }
+    .chart-head .dimension { color: var(--muted); font: 12px/1.4 var(--mono); }
+    .bars { margin: 20px 0 8px; }
+    .bar-row, .axis { display: grid; grid-template-columns: minmax(90px, 112px) 1fr 63px; gap: 10px; align-items: center; }
+    .bar-row { min-height: 33px; }
+    .method { font-size: 13px; white-space: nowrap; }
+    .method code { color: var(--muted); font-size: 10px; margin-right: 6px; }
+    .bar-track { background: #e9edf0; position: relative; height: 10px; border-radius: 2px; overflow: hidden; }
+    .bar-fill { width: var(--width); height: 100%; display: block; background: #8899af; transition: width .3s ease; }
+    [data-method="C1"] .bar-fill { background: #637eaa; }
+    [data-method="C2"] .bar-fill { background: var(--plot-blue); }
+    .bar-value { text-align: right; color: var(--ink); white-space: nowrap; font: 650 13px/1.3 var(--mono); }
+    .axis { color: var(--muted); font: 10px/1.4 var(--mono); }
+    .axis-scale { grid-column: 2; display: flex; justify-content: space-between; }
+    .chart-note { color: var(--muted); font-size: 12px; line-height: 1.65; }
+    .outcomes { display: flex; gap: clamp(16px, 3vw, 40px); align-items: center; margin: 15px 0 12px; }
+    .ring { width: 109px; aspect-ratio: 1; flex: none; display: grid; place-items: center; border-radius: 50%; background: conic-gradient(var(--plot-blue) 0 57.142857%, #b3becd 57.142857% 100%); }
+    .ring-center { display: grid; place-content: center; justify-items: center; width: 78%; height: 78%; border-radius: 50%; background: var(--paper); }
+    .ring-center b { font: 650 30px/1 var(--sans); }
+    .ring-center small { color: var(--muted); font-size: 11px; }
+    .legend { min-width: 120px; max-width: 240px; flex: 1; }
+    .legend > div { display: flex; justify-content: space-between; gap: 14px; align-items: center; padding: 3px 0; }
+    .legend dt { display: flex; gap: 9px; align-items: center; font-size: 13px; }
+    .legend dd { font: 600 13px/1.5 var(--mono), var(--sans); }
+    .swatch { width: 10px; height: 10px; background: var(--plot-blue); border-radius: 2px; }
+    .swatch.abstained { background: #b3becd; }
+    .swatch.answered { border: 1px solid #7c8897; background: transparent; }
+    .case-list { border-top: 1px solid var(--rule); }
+    .case { border-bottom: 1px solid var(--rule); }
+    .case summary { display: grid; grid-template-columns: 95px minmax(0, 1fr) auto 16px; align-items: center; gap: 12px; min-height: 47px; padding: 8px 4px; list-style: none; }
+    .case summary::-webkit-details-marker { display: none; }
+    .case summary:hover { background: #eef2f6; }
+    .case summary::after { content: ""; width: 7px; height: 7px; margin: 0 auto; border: solid var(--muted); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); transition: transform .16s ease; }
+    .case[open] summary::after { transform: rotate(225deg); }
+    .verdict { font-size: 12px; font-weight: 670; color: var(--blue); }
+    .verdict::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: var(--plot-blue); }
+    .verdict.hold { color: #516177; }
+    .verdict.hold::before { background: #8492a7; }
+    .question { font-size: 15px; font-weight: 630; }
+    .case-scope { font-size: 12px; color: var(--muted); white-space: nowrap; }
+    .case-body { padding: 0 24px 17px 111px; font-size: 14px; color: var(--muted); }
+    .case-body strong { color: var(--ink); }
+    .case-body code { overflow-wrap: anywhere; font-size: .92em; }
+    .refline { margin-top: 5px; font-size: 12px; }
+    .foot { border-top: 1px solid var(--rule); color: var(--muted); font-size: 12px; }
+    .foot-inner { display: flex; align-items: center; justify-content: space-between; gap: 12px 24px; flex-wrap: wrap; padding-block: 20px 24px; }
+    .foot nav { display: flex; gap: 18px; flex-wrap: wrap; }
+    .foot nav a { color: var(--muted); }
+    @media (max-width: 1000px) and (min-width: 761px) {
+      .flow-node { padding-inline: 7px; justify-content: center; }
+      .symbol { display: none; }
+      .node-copy { text-align: center; }
+    }
+    @media (max-width: 760px) {
+      .wrap { width: calc(100% - 36px); }
+      .mast-inner { min-height: 55px; gap: 8px; }
+      .mast nav { gap: 14px; }
+      .mast nav a { font-size: 12px; }
+      .brand { font-size: 15px; gap: 7px; }
+      .graph-stage { max-width: 500px; margin-inline: auto; }
+      .graph-stage.has-bypass { padding: 0 16px 0 0; }
+      .bypass-key { margin-top: 13px; }
+      .flow-nodes { grid-template-columns: repeat(2, minmax(0,1fr)); grid-template-rows: repeat(var(--columns), auto); gap: 21px 22px; }
+      .flow-node { grid-column: var(--mobile-col) / span var(--mobile-span); grid-row: var(--col); max-width: 218px; justify-self: center; justify-content: center; min-height: 49px; }
+      .board { padding: 16px 17px 20px; }
+      .board-head { margin-bottom: 17px; }
+      .inspector { grid-template-columns: minmax(0,1fr) minmax(100px,.6fr); gap: 5px 16px; }
+      .inspector p { grid-column: 1 / -1; grid-row: 2; }
+      .inspector .out { grid-column: 2; grid-row: 1; }
+      .results-grid { grid-template-columns: 1fr; }
+      .metric-panel { padding: 18px 0; }
+      .metric-panel + .metric-panel { padding: 18px 0; border-left: 0; border-top: 1px solid var(--rule); }
+      .outcomes { gap: 28px; }
+    }
+    @media (max-width: 540px) {
+      .mast { position: static; }
+      .mast-inner { display: block; padding-top: 13px; }
+      .mast nav { gap: 22px; margin-top: 5px; }
+      .mast nav a { min-height: 35px; }
+      section[id] { scroll-margin-top: 12px; }
+      .intro-meta { align-items: flex-start; gap: 6px; flex-wrap: wrap; }
+      .scope, .date { font-size: 11px; }
+      .date { gap: 4px; }
+      .scope::before { width: 12px; margin-right: 5px; }
+      .stats { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 14px 0; margin-top: 18px; padding: 14px 0; }
+      .stat { padding-inline: 14px; }
+      .stat:nth-child(odd) { padding-left: 0; border-left: 0; }
+      .section-head { flex-wrap: wrap; align-items: baseline; }
+      .switch button { padding-inline: 10px; }
+      .bar-row, .axis { grid-template-columns: 87px 1fr 56px; gap: 6px; }
+      .case summary { grid-template-columns: minmax(0,1fr) auto 14px; gap: 3px 8px; padding: 10px 2px; }
+      .case .verdict { grid-column: 1; grid-row: 1; }
+      .case .case-scope { grid-column: 2; grid-row: 1; }
+      .case .question { grid-column: 1 / span 2; grid-row: 2; }
+      .case summary::after { grid-column: 3; grid-row: 1 / 3; }
+      .case-body { padding: 0 8px 15px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { transition-duration: 0s !important; }
+    }
+    @media print {
+      .mast { position: static; }
+      .mast nav, .switch, .skip { display: none; }
+      .wrap { width: 100%; }
+      .report-section, .case { break-inside: avoid; }
+      * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body id="top">
+  <a class="skip" href="#main">본문으로 이동</a>
+  <header class="mast">
+    <div class="wrap mast-inner">
+      <a class="brand" href="#top"><span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>Enterprise Knowledge Agent</a>
+      <nav aria-label="보고서 목차">
+        <a href="#workflow" aria-current="location">워크플로우</a>
+        <a href="#results">검증 결과</a>
+        <a href="#cases">실행 사례</a>
+      </nav>
+    </div>
+  </header>
+  <main id="main" class="wrap">
+    <section class="intro" aria-labelledby="report-title">
+      <div class="intro-meta">
+        <span class="scope">EnterpriseRAG-Bench / Phase 1–3</span>
+        <span class="date">검증 기준 <time datetime="2026-11-21">2026.11.21</time></span>
+      </div>
+      <h1 id="report-title">구현 및 검증 보고서</h1>
+      <p>사내 문서를 PostgreSQL에 저장하고 키워드와 벡터로 검색합니다. 답변의 각 주장은 원문 구간과 대조합니다.</p>
+      <dl class="stats">
+        <div class="stat"><dt>표본 문서</dt><dd>180 <small>개</small></dd><dd class="stat-note">9개 소스에서 각 20개</dd></div>
+        <div class="stat"><dt>저장된 청크</dt><dd>1,248 <small>개</small></dd><dd class="stat-note">임베딩도 1,248개 저장</dd></div>
+        <div class="stat"><dt>자동 테스트 통과</dt><dd>64 <small>/ 64</small></dd><dd class="stat-note">단위 46개 · DB 통합 18개</dd></div>
+        <div class="stat"><dt>인용 원문 일치</dt><dd>4 <small>/ 4</small></dd><dd class="stat-note">서로 다른 원문 구간 2곳</dd></div>
+      </dl>
+    </section>
+
+    <section id="workflow" class="report-section" aria-labelledby="workflow-title">
+      <div class="section-head">
+        <h2 id="workflow-title">시스템 워크플로우</h2>
+        <div id="flow-switch" class="switch" role="group" aria-label="워크플로우 선택" hidden>
+          <button type="button" data-flow="answer" aria-pressed="true">질문·답변</button>
+          <button type="button" data-flow="ingest" aria-pressed="false">데이터 수집</button>
+        </div>
+      </div>
+      <figure id="interactive-flow" hidden>
+        <div class="diagram">
+          <div class="board">
+            <div class="board-head"><span class="board-label" id="board-title"></span><span class="board-meta" id="board-phase"></span></div>
+            <p id="route-description" class="sr-only"></p>
+            <div class="graph-stage" id="graph-stage">
+              <canvas id="wires" aria-hidden="true"></canvas>
+              <div class="flow-nodes" id="nodes" role="group" aria-label="단계 선택" aria-describedby="route-description"></div>
+            </div>
+            <p id="bypass-key" class="bypass-key">허용 범위 밖이거나 근거가 없으면 생성 없이 보류</p>
+          </div>
+          <div class="inspector" id="node-detail" aria-live="polite" aria-atomic="true">
+            <div><small>선택한 단계</small><strong id="node-title"></strong></div>
+            <p id="node-description"></p>
+            <div class="out"><small>출력</small><span id="node-output"></span></div>
+          </div>
+        </div>
+        <figcaption class="caption">단계를 선택하면 처리 내용과 출력을 볼 수 있습니다.</figcaption>
+      </figure>
+      <noscript>
+        <div class="fallback">
+          <p><strong>Phase 1</strong> 원본 문서 → 정규화 → 청크 분할 → PostgreSQL 저장 → 전문 색인과 벡터 임베딩.</p>
+          <p><strong>Phase 2–3</strong> 질문·권한 확인 → 키워드·벡터 검색 → RRF 결합 → 원문 대조와 답변 생성 → 주장·인용 검증 → 답변·부분 답변·보류.</p>
+        </div>
+      </noscript>
+    </section>
+
+    <section id="results" class="report-section" aria-labelledby="results-title">
+      <div class="section-head"><h2 id="results-title">검증 결과</h2><span class="section-note">PostgreSQL + pgvector · 로컬 모델</span></div>
+      <div class="results-grid">
+        <figure class="metric-panel" aria-labelledby="retrieval-title">
+          <div class="chart-head">
+            <h3 id="retrieval-title">검색 방식별 성능</h3>
+            <label><span class="sr-only">검색 성능 지표</span>
+              <select id="metric" aria-controls="bar-chart" disabled>
+                <option value="recall@1">Recall@1</option><option value="recall@5">Recall@5</option>
+                <option value="recall@10" selected>Recall@10</option><option value="mrr">MRR</option>
+                <option value="mean_latency_ms">평균 지연</option><option value="mean_retrieved_documents">평균 검색 문서 수</option>
+              </select>
+            </label>
+          </div>
+          <div class="bars" id="bar-chart" aria-live="polite" aria-atomic="true">
+            <div class="bar-row" data-method="C0"><span class="method"><code>C0</code>키워드</span><span class="bar-track" aria-hidden="true"><i class="bar-fill" style="--width:77.13%"></i></span><span class="bar-value">3.86%</span></div>
+            <div class="bar-row" data-method="C1"><span class="method"><code>C1</code>벡터</span><span class="bar-track" aria-hidden="true"><i class="bar-fill" style="--width:83.51%"></i></span><span class="bar-value">4.18%</span></div>
+            <div class="bar-row" data-method="C2"><span class="method"><code>C2</code>하이브리드</span><span class="bar-track" aria-hidden="true"><i class="bar-fill" style="--width:83.51%"></i></span><span class="bar-value">4.18%</span></div>
+            <div class="axis" aria-hidden="true"><div class="axis-scale" id="axis"><span>0%</span><span>2.5%</span><span>5%</span></div></div>
+          </div>
+          <figcaption class="chart-note"><span id="metric-note">정답 ID가 있는 공식 질문 470개의 문서 Recall입니다. 이 중 24개 질문만 표본에 정답 문서가 있습니다.</span> <a href="phase2-sample180-summary.json">측정값</a></figcaption>
+        </figure>
+        <figure class="metric-panel" aria-labelledby="outcomes-title">
+          <div class="chart-head"><h3 id="outcomes-title">답변 판정 분포</h3><span class="dimension">Phase 3</span></div>
+          <div class="outcomes">
+            <div class="ring" aria-hidden="true"><div class="ring-center"><b>7</b><small>표본 요청</small></div></div>
+            <dl class="legend" aria-label="표본 요청 7건의 판정">
+              <div><dt><i class="swatch" aria-hidden="true"></i>부분 답변</dt><dd>4건</dd></div>
+              <div><dt><i class="swatch abstained" aria-hidden="true"></i>답변 보류</dt><dd>3건</dd></div>
+              <div><dt><i class="swatch answered" aria-hidden="true"></i>완전 답변</dt><dd>0건</dd></div>
+            </dl>
+          </div>
+          <figcaption class="chart-note">표본 원문을 보고 작성한 요청 7건을 실행했습니다. 보류 3건 중 2건은 허용된 근거가 없어 생성 호출을 생략했습니다.</figcaption>
+        </figure>
+      </div>
+      <p class="caption">Phase 1 재수집에서 새 청크·임베딩은 0개였습니다. Phase 2에서 질문 500개와 검색 방식 3개의 순위·점수를 재현했고, Phase 3 테스트 64개는 별도 wheel 설치 환경에서도 통과했습니다.</p>
+    </section>
+
+    <section id="cases" class="report-section" aria-labelledby="cases-title">
+      <div class="section-head"><h2 id="cases-title">실행 사례</h2><span class="section-note">표본 요청 7건과 별도 충돌 실험</span></div>
+      <div class="case-list">
+        <details class="case" open>
+          <summary><span class="verdict">부분 답변</span><span class="question">Redwood Console의 어느 두 페이지에서 근무 교대 패널을 열 수 있나요?</span><span class="case-scope">Linear · 3건</span></summary>
+          <div class="case-body"><p>세 검색 방식 모두 <strong>Alerts와 SLO 페이지</strong>를 답으로 제시했습니다. 세 응답이 인용한 원문 구간은 같았고 최종 판정은 모두 부분 답변이었습니다.</p>
+            <p class="refline">원본 <code>dsid_1d5c022db7ef4708a7178bc291921770</code> · 문자 구간 <code>[166, 673)</code></p></div>
+        </details>
+        <details class="case">
+          <summary><span class="verdict">부분 답변</span><span class="question">InnovaCare가 요청한 단가 동결 기간은 얼마인가요?</span><span class="case-scope">Gmail · 1건</span></summary>
+          <div class="case-body"><p>이메일에서 요청 기간 <strong>3년</strong>을 확인했습니다. 인용문을 DB 원문·청크와 원본 JSON에서 각각 대조했습니다.</p>
+            <p class="refline">원본 <code>dsid_02892bbb04c94f5bbeaf5f0068ba47d8</code> · 문자 구간 <code>[301, 495)</code></p></div>
+        </details>
+        <details class="case">
+          <summary><span class="verdict hold">답변 보류</span><span class="question">사용성 테스트에는 몇 명이 참여하나요?</span><span class="case-scope">Linear · 1건</span></summary>
+          <div class="case-body"><p>문서에는 5명이 명시돼 있습니다. 이 요청에서 모델이 선택한 구간은 해당 수치를 뒷받침하지 못해 답변을 보류했습니다.</p></div>
+        </details>
+        <details class="case">
+          <summary><span class="verdict hold">답변 보류</span><span class="question">검색 결과가 없거나 요청 소스가 열람 범위 밖이면 어떻게 되나요?</span><span class="case-scope">두 조건 · 각 1건</span></summary>
+          <div class="case-body"><p>일치하는 어휘가 없는 키워드 검색과 허용 범위 밖인 Slack으로 제한한 요청에서 각각 보류했습니다. 두 요청 모두 생성 모델 호출은 0회였습니다.</p></div>
+        </details>
+        <details class="case">
+          <summary><span class="verdict hold">충돌로 보류</span><span class="question">회의실 정원을 두 공지가 다르게 안내하면 어떻게 되나요?</span><span class="case-scope">별도 통제 실험</span></summary>
+          <div class="case-body"><p>각각 <strong>12명과 20명</strong>을 명시한 공지 두 건의 원문을 응답의 <code>conflicts</code>에 보존하고 정원에 대한 결론을 보류했습니다. 위 7건과 별도로 실행한 사례입니다.</p></div>
+        </details>
+      </div>
+      <p class="caption">인용 위치는 정규화된 원문에서 0부터 세며 끝 위치는 제외합니다. 공식 500문항의 답변 정확도·완전성은 별도 평가 대상입니다.</p>
+    </section>
+  </main>
+  <footer class="foot"><div class="wrap foot-inner">
+    <span>다음 단계 · Phase 4 다단계 검색 / Phase 5 평가·최적화</span>
+    <nav aria-label="근거 문서"><a href="../README.md">프로젝트 README</a><a href="phase1-2-verification.md">Phase 1·2 검증 원문</a><a href="phase3-verification.md">Phase 3 검증 원문</a></nav>
+  </div></footer>
+  <script id="search-measurements" type="application/json">
+    {
+      "C0": {"recall@1": 0.029787234042553193, "recall@5": 0.03404255319148936, "recall@10": 0.03856382978723404, "mrr": 0.034548371250498915, "mean_latency_ms": 19.739791911793873, "mean_retrieved_documents": 13.492},
+      "C1": {"recall@1": 0.022340425531914895, "recall@5": 0.035106382978723406, "recall@10": 0.04175531914893617, "mrr": 0.03020414583129065, "mean_latency_ms": 6.111982151574921, "mean_retrieved_documents": 29.76},
+      "C2": {"recall@1": 0.03404255319148936, "recall@5": 0.04069148936170213, "recall@10": 0.04175531914893617, "mrr": 0.03938167521655033, "mean_latency_ms": 23.501497257733718, "mean_retrieved_documents": 23.484}
+    }
+  </script>
+  <script>
+    "use strict";
+
+    const flows = {
+      answer: {
+        title: "기본 하이브리드 검색", phase: "Phase 2 → 3", selected: "verify",
+        route: "질문과 권한을 확인한 뒤 키워드 검색과 벡터 검색의 순위를 결합합니다. 근거로 답변을 생성하고 주장을 검증해 응답합니다. 허용 범위 밖이거나 근거가 없으면 생성 전에 보류합니다.",
+        nodes: [
+          {id: "scope", title: "질문·권한", sub: "CLI / API", glyph: "↦", col: 1,
+            detail: "질문과 요청 필터를 받고, 인스턴스에 설정한 소스·문서 허용 목록을 검색 전에 적용합니다.", output: "질문 · 허용 필터"},
+          {id: "keyword", title: "키워드 검색", sub: "English FTS", glyph: "≡", col: 2, lane: "top",
+            detail: "PostgreSQL 영어 전문 검색으로 제목과 본문을 조회하고 ts_rank_cd 점수로 청크 순위를 정합니다. C0는 이 순위를 사용합니다.", output: "청크별 어휘 순위"},
+          {id: "dense", title: "벡터 검색", sub: "pgvector", glyph: "⠿", col: 2, lane: "bottom",
+            detail: "표본 실험에서는 Model2Vec으로 질문을 256차원 벡터로 변환하고, 청크와의 코사인 유사도를 계산했습니다. C1은 이 순위를 사용합니다.", output: "청크별 의미 검색 순위"},
+          {id: "fusion", title: "순위 결합", sub: "RRF", glyph: "⋈", col: 3,
+            detail: "C2는 두 검색기의 후보를 청크 ID로 합칩니다. 표본 설정에서는 각 검색기의 순위에 따라 1 / (60 + 순위)를 더합니다.", output: "통합 순위 · 청크 ID"},
+          {id: "generate", title: "답변 생성", sub: "Qwen2.5", glyph: "▤", col: 4,
+            detail: "허용된 청크가 DB 원문과 일치하는지 확인하고 최대 6,000자의 발췌문으로 주장을 생성합니다. 근거가 없으면 호출을 생략합니다.", output: "답변 초안 · 근거 ID"},
+          {id: "verify", title: "근거 검증", sub: "NLI + DB", glyph: "✓", col: 5,
+            detail: "숫자·약어와 주장을 원문에 대조하고 반대 근거를 확인합니다. 전달했던 청크의 내용과 열람 범위도 DB에서 다시 확인합니다.", output: "검증된 주장 · 인용 위치"},
+          {id: "result", title: "응답 판정", sub: "JSON", glyph: "{}", col: 6,
+            detail: "확인한 주장과 충돌 여부에 따라 답변·부분 답변·보류를 반환합니다. 인용에는 원본 문서 ID, 청크 ID, 발췌문과 문자 위치가 포함됩니다.", output: "상태 · 주장 · 인용 · 충돌"}
+        ],
+        edges: [["scope", "keyword"], ["scope", "dense"], ["keyword", "fusion"], ["dense", "fusion"], ["fusion", "generate"], ["generate", "verify"], ["verify", "result"]]
+      },
+      ingest: {
+        title: "문서 수집과 색인 준비", phase: "Phase 1", selected: "chunk",
+        route: "원본 문서를 정규화하고 청크로 분할해 PostgreSQL에 저장합니다. 저장된 청크로 전문 색인과 벡터 임베딩을 준비합니다.",
+        nodes: [
+          {id: "source", title: "원본 문서", sub: "EnterpriseRAG-Bench", glyph: "▤", col: 1,
+            detail: "원본 JSON, 공식 TXT 배포본, 문서 Parquet를 읽습니다. 표본에서는 9개 소스에서 원본 JSON을 20개씩 수집했습니다.", output: "원본 레코드 180개"},
+          {id: "normalize", title: "정규화", sub: "Pydantic", glyph: "≡", col: 2,
+            detail: "원본 dsid_*와 소스를 보존하고 본문을 메타데이터와 분리합니다. 제목·시간 등 원본에 있는 정보만 저장합니다.", output: "문서 · 메타데이터"},
+          {id: "chunk", title: "청크 분할", sub: "1,200 / 160", glyph: "▥", col: 3,
+            detail: "표본은 1,200자 단위로 자르고 160자를 겹쳤습니다. 원본 문서 ID, 시작 위치, 본문 해시를 사용해 같은 청크에 같은 ID를 부여합니다.", output: "청크 1,248개 · 원문 위치"},
+          {id: "store", title: "배치 저장", sub: "PostgreSQL", glyph: "▤", col: 4,
+            detail: "문서와 청크를 배치로 저장합니다. 같은 설정으로 표본을 다시 수집했을 때 180개 문서가 모두 그대로였고 새 청크는 0개였습니다.", output: "문서 테이블 · 청크 테이블"},
+          {id: "fts", title: "전문 색인", sub: "FTS / GIN", glyph: "≡", col: 5, lane: "top",
+            detail: "청크의 제목과 본문으로 영어 검색 벡터를 구성하고 GIN 인덱스를 생성합니다. 키워드 검색이 이 벡터를 조회합니다.", output: "검색 가능한 어휘 색인"},
+          {id: "embed", title: "임베딩 저장", sub: "Model2Vec", glyph: "⠿", col: 5, lane: "bottom",
+            detail: "표본 청크 1,248개의 임베딩을 pgvector에 저장했습니다. 같은 모델·리비전·차원·청크 ID로 재실행했을 때 새 임베딩은 0개였습니다.", output: "256차원 벡터 1,248개"}
+        ],
+        edges: [["source", "normalize"], ["normalize", "chunk"], ["chunk", "store"], ["store", "fts"], ["store", "embed"]]
+      }
+    };
+
+    const byId = (id) => document.getElementById(id);
+    const stage = byId("graph-stage");
+    const canvas = byId("wires");
+    const nodes = byId("nodes");
+    const flowButtons = Array.from(document.querySelectorAll("[data-flow]"));
+    const vertical = matchMedia("(max-width: 760px)");
+    let activeFlow = flows.answer;
+    let activeNode = activeFlow.selected;
+    let frame = 0;
+
+    function label(tag, className, text) {
+      const item = document.createElement(tag);
+      if (className) item.className = className;
+      item.textContent = text;
+      return item;
+    }
+
+    function drawBypass(ctx, rects, bounds, down) {
+      const target = rects.get("result");
+      const line = down ? bounds.width - 3 : bounds.height - 3;
+      const tipX = (down ? target.right + 2 : target.left + target.width / 2) - bounds.left;
+      const tipY = (down ? target.top + target.height / 2 : target.bottom + 2) - bounds.top;
+      ctx.strokeStyle = ctx.fillStyle = "#9babca";
+      ctx.lineWidth = 1.25;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      for (const id of ["scope", "fusion"]) {
+        const from = rects.get(id);
+        const x = (down ? from.right : from.left + from.width / 2) - bounds.left;
+        const y = (down ? from.top + from.height / 2 : from.bottom) - bounds.top;
+        ctx.moveTo(x, y);
+        ctx.lineTo(down ? line : x, down ? y : line);
+        if (id === "scope") {
+          ctx.lineTo(down ? line : tipX, down ? tipY : line);
+          ctx.lineTo(tipX, tipY);
+        }
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(tipX, tipY);
+      if (down) {
+        ctx.lineTo(tipX + 5, tipY - 3);
+        ctx.lineTo(tipX + 5, tipY + 3);
+      } else {
+        ctx.lineTo(tipX - 3, tipY + 5);
+        ctx.lineTo(tipX + 3, tipY + 5);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function drawWires() {
+      const bounds = stage.getBoundingClientRect();
+      const ctx = canvas.getContext("2d");
+      if (!ctx || !bounds.width || !bounds.height) return;
+      const scale = window.devicePixelRatio || 1;
+      const width = Math.round(bounds.width * scale);
+      const height = Math.round(bounds.height * scale);
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
+      ctx.clearRect(0, 0, bounds.width, bounds.height);
+      const rects = new Map(Array.from(nodes.children, (button) => [
+        button.dataset.node, button.getBoundingClientRect()
+      ]));
+      const down = vertical.matches;
+      if (activeFlow === flows.answer) drawBypass(ctx, rects, bounds, down);
+      for (const [from, to] of activeFlow.edges) {
+        const a = rects.get(from);
+        const b = rects.get(to);
+        const x1 = (down ? a.left + a.width / 2 : a.right) - bounds.left;
+        const y1 = (down ? a.bottom : a.top + a.height / 2) - bounds.top;
+        const x2 = (down ? b.left + b.width / 2 : b.left - 2) - bounds.left;
+        const y2 = (down ? b.top - 2 : b.top + b.height / 2) - bounds.top;
+        const midX = (x1 + x2) / 2;
+        const midY = (y1 + y2) / 2;
+        const selected = from === activeNode || to === activeNode;
+        ctx.strokeStyle = ctx.fillStyle = selected ? "#abc4ff" : "#7e92b4";
+        ctx.lineWidth = selected ? 1.8 : 1.25;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        if (down) ctx.bezierCurveTo(x1, midY, x2, midY, x2, y2);
+        else ctx.bezierCurveTo(midX, y1, midX, y2, x2, y2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x2, y2);
+        if (down) {
+          ctx.lineTo(x2 - 3.4, y2 - 5);
+          ctx.lineTo(x2 + 3.4, y2 - 5);
+        } else {
+          ctx.lineTo(x2 - 5, y2 - 3.4);
+          ctx.lineTo(x2 - 5, y2 + 3.4);
+        }
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    function scheduleWires() {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(drawWires);
+    }
+
+    function selectNode(node) {
+      activeNode = node.id;
+      for (const button of nodes.children) {
+        button.setAttribute("aria-pressed", String(button.dataset.node === node.id));
+      }
+      byId("node-title").textContent = node.title;
+      byId("node-description").textContent = node.detail;
+      byId("node-output").textContent = node.output;
+      scheduleWires();
+    }
+
+    function showFlow(key) {
+      activeFlow = flows[key];
+      for (const button of flowButtons) {
+        button.setAttribute("aria-pressed", String(button.dataset.flow === key));
+      }
+      byId("board-title").textContent = activeFlow.title;
+      byId("board-phase").textContent = activeFlow.phase;
+      byId("route-description").textContent = activeFlow.route;
+      stage.classList.toggle("has-bypass", key === "answer");
+      byId("bypass-key").hidden = key !== "answer";
+      nodes.style.setProperty("--columns", Math.max(...activeFlow.nodes.map((node) => node.col)));
+      nodes.replaceChildren();
+      for (const node of activeFlow.nodes) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "flow-node";
+        button.dataset.node = node.id;
+        button.setAttribute("aria-controls", "node-detail");
+        button.style.setProperty("--col", node.col);
+        button.style.setProperty("--row", node.lane === "top" ? 1 : node.lane === "bottom" ? 3 : 2);
+        button.style.setProperty("--mobile-col", node.lane === "bottom" ? 2 : 1);
+        button.style.setProperty("--mobile-span", node.lane ? 1 : 2);
+        const symbol = label("span", "symbol", node.glyph);
+        symbol.setAttribute("aria-hidden", "true");
+        const copy = document.createElement("span");
+        copy.className = "node-copy";
+        copy.append(label("strong", "", node.title), label("small", "", node.sub));
+        button.append(symbol, copy);
+        button.addEventListener("click", () => selectNode(node));
+        nodes.append(button);
+      }
+      selectNode(activeFlow.nodes.find((node) => node.id === activeFlow.selected));
+    }
+
+    byId("flow-switch").hidden = false;
+    byId("interactive-flow").hidden = false;
+    flowButtons.forEach((button) => button.addEventListener("click", () => showFlow(button.dataset.flow)));
+    showFlow("answer");
+    new ResizeObserver(scheduleWires).observe(stage);
+    window.addEventListener("beforeprint", drawWires);
+
+    const measurements = JSON.parse(byId("search-measurements").textContent);
+    const metric = byId("metric");
+    const chartScales = {
+      recall: {
+        max: 0.05, ticks: ["0%", "2.5%", "5%"], format: (value) => (value * 100).toFixed(2) + "%",
+        note: (key) => "상위 " + key.split("@")[1] + "개 고유 문서의 Recall입니다. 정답 ID가 있는 470문항 중 24문항만 표본에 정답 문서가 있습니다."
+      },
+      mrr: {
+        max: 0.05, ticks: ["0", "0.025", "0.050"], format: (value) => value.toFixed(4),
+        note: () => "정답 ID가 있는 470문항에서 첫 정답 문서 순위의 역수를 평균했습니다. 후보에서 정답을 찾지 못한 질문은 0점입니다."
+      },
+      mean_latency_ms: {
+        max: 30, ticks: ["0", "15", "30 ms"], format: (value) => value.toFixed(2) + " ms",
+        note: () => "최초 평가에서 공식 질문 500개의 검색 호출 시간을 평균했습니다. 모델 로딩 시간은 제외합니다."
+      },
+      mean_retrieved_documents: {
+        max: 50, ticks: ["0", "25", "50개"], format: (value) => value.toFixed(2) + "개",
+        note: () => "공식 질문 500개에서 최대 50개 후보 청크를 원본 문서 ID로 중복 제거한 뒤 질문당 문서 수를 평균했습니다."
+      }
+    };
+    function showMetric() {
+      const key = metric.value;
+      const scale = chartScales[key.startsWith("recall@") ? "recall" : key];
+      for (const row of document.querySelectorAll(".bar-row")) {
+        const value = measurements[row.dataset.method][key];
+        row.querySelector(".bar-value").textContent = scale.format(value);
+        row.querySelector(".bar-fill").style.setProperty("--width", (value / scale.max * 100) + "%");
+      }
+      byId("axis").replaceChildren(...scale.ticks.map((tick) => label("span", "", tick)));
+      byId("metric-note").textContent = scale.note(key);
+    }
+    metric.disabled = false;
+    metric.addEventListener("change", showMetric);
+    showMetric();
+
+    const navLinks = Array.from(document.querySelectorAll(".mast nav a"));
+    function markSection() {
+      const atEnd = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
+      let current = atEnd ? navLinks.at(-1) : navLinks[0];
+      if (!atEnd) {
+        for (const link of navLinks) {
+          if (document.querySelector(link.hash).getBoundingClientRect().top <= 110) current = link;
+        }
+      }
+      for (const link of navLinks) {
+        if (link === current) link.setAttribute("aria-current", "location");
+        else link.removeAttribute("aria-current");
+      }
+    }
+    window.addEventListener("scroll", markSection, {passive: true});
+    markSection();
+  </script>
+</body>
+</html>
