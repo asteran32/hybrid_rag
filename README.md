@@ -191,7 +191,7 @@ uv run --all-extras pytest -q
 
 같은 설정으로 평가를 반복했을 때 1,500개 질문·검색 방식 조합의 청크 순위, 점수와 문서 지표가 모두 일치했습니다. 단위 및 PostgreSQL 통합 테스트 22개가 통과했습니다. OpenAI 어댑터는 모의 응답으로 검증했고, 위 측정에는 로컬 Model2Vec을 사용했습니다.
 
-[실험 설정과 결과 요약](experiments/phase2-sample180-summary.json)에 정확한 수치를 보관합니다. 질문별 전체 결과의 기본 예시 경로는 `experiments/results/phase2-sample180.json`입니다.
+질문별 전체 결과의 기본 예시 경로는 `experiments/results/phase2-sample180.json`입니다. 재검증 보고서에는 같은 표본을 빈 DB에 다시 수집한 결과와 세 검색 방식의 독립 검산 방법을 기록했습니다. [최초 평가 설정과 결과 요약](experiments/phase2-sample180-summary.json) · [Phase 1·2 재검증 보고서](experiments/phase1-2-verification.md)
 
 ## Retrieval & Answering Policy
 
