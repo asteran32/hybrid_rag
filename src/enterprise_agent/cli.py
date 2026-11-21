@@ -24,6 +24,7 @@ from enterprise_agent.retrieval.service import (
 from enterprise_agent.storage.db import build_lexical_index, connect, initialize
 from enterprise_agent.storage.embeddings import index_embeddings
 from enterprise_agent.storage.search import SearchStore
+from enterprise_agent.validation.entailment import VerificationUnavailable
 
 
 def positive(value: str) -> int:
@@ -216,6 +217,12 @@ def main() -> int:
             elif args.command == "evaluate":
                 run_evaluation(db, args)
         return 0
-    except (ValueError, OSError, psycopg.Error, GenerationUnavailable) as exc:
+    except (
+        ValueError,
+        OSError,
+        psycopg.Error,
+        GenerationUnavailable,
+        VerificationUnavailable,
+    ) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

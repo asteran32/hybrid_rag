@@ -12,7 +12,7 @@ pytestmark = pytest.mark.integration
 
 
 def test_api_uses_trusted_scope_and_fails_closed_on_invalid_input_or_service_failure(
-    db, documents, monkeypatch
+    db, documents, monkeypatch, classify_fixture
 ):
     pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
@@ -41,7 +41,7 @@ def test_api_uses_trusted_scope_and_fails_closed_on_invalid_input_or_service_fai
         )
 
         def supported(query, passages):
-            assert passages == {"E1": documents[0].content}
+            assert passages == {"E1.1": documents[0].content}
             return Generation(
                 outcome={
                     "coverage": "complete",
@@ -49,9 +49,7 @@ def test_api_uses_trusted_scope_and_fails_closed_on_invalid_input_or_service_fai
                         {
                             "kind": "fact",
                             "text": documents[0].content,
-                            "citations": [
-                                {"passage": "E1", "quote": documents[0].content}
-                            ],
+                            "citations": ["E1.1"],
                         }
                     ],
                     "conflicts": [],
@@ -62,6 +60,7 @@ def test_api_uses_trusted_scope_and_fails_closed_on_invalid_input_or_service_fai
             )
 
         monkeypatch.setattr(runtime, "generate", supported)
+        monkeypatch.setattr(runtime, "classify_local", classify_fixture)
         answer = client.post("/answer", json=question)
         assert answer.status_code == 200 and answer.json()["status"] == "answered"
         assert answer.json()["claims"][0]["citations"][0]["document_id"] == "dsid_one"

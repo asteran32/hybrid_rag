@@ -1,4 +1,5 @@
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -10,10 +11,11 @@ from enterprise_agent.generation.chat import GenerationUnavailable
 from enterprise_agent.generation.contracts import AnswerRequest, GroundedAnswer
 from enterprise_agent.generation.runtime import run_answer
 from enterprise_agent.storage.db import connect
+from enterprise_agent.validation.entailment import VerificationUnavailable
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     load_dotenv(Path.cwd() / ".env")
     yield
 
@@ -26,7 +28,13 @@ def answer(request: AnswerRequest) -> GroundedAnswer:
     try:
         with connect() as db:
             return run_answer(db, request)
-    except (GenerationUnavailable, ValueError, OSError, psycopg.Error) as exc:
+    except (
+        GenerationUnavailable,
+        VerificationUnavailable,
+        ValueError,
+        OSError,
+        psycopg.Error,
+    ) as exc:
         logging.getLogger(__name__).warning(
             "Answer service unavailable (%s)", type(exc).__name__
         )

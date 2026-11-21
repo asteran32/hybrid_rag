@@ -33,9 +33,7 @@ def receipts_draft():
                 {
                     "kind": "fact",
                     "text": "Business travel receipts are required.",
-                    "citations": [
-                        {"passage": "E1", "quote": "travel receipts are required."}
-                    ],
+                    "citations": ["E1.1"],
                 }
             ],
             conflicts=[],
@@ -45,7 +43,7 @@ def receipts_draft():
 
 
 def test_only_authorized_canonical_text_reaches_model_even_if_retriever_returns_other_hits(
-    db, documents
+    db, documents, classify_fixture
 ):
     ingest(db, documents, ChunkSettings(), limit=2, batch_size=2)
     store = SearchStore(db)
@@ -64,7 +62,7 @@ def test_only_authorized_canonical_text_reaches_model_even_if_retriever_returns_
 
     def generate(question, passages):
         assert question == REQUEST.question
-        assert passages == {"E1": documents[0].content}
+        assert passages == {"E1.1": documents[0].content}
         return receipts_draft()
 
     out = answer_question(
@@ -73,6 +71,7 @@ def test_only_authorized_canonical_text_reaches_model_even_if_retriever_returns_
         retriever=UnreliableRetriever(),
         store=store,
         generate=generate,
+        classify=classify_fixture,
     )
     assert calls == [(REQUEST.question, REQUEST.top_k, SCOPE)]
     assert out.status == "answered"
@@ -85,7 +84,7 @@ def test_only_authorized_canonical_text_reaches_model_even_if_retriever_returns_
     "change", ["delete", "edit", "revoke_source", "revoke_metadata"]
 )
 def test_citations_checked_after_generation_against_current_document_and_policy(
-    db, documents, change
+    db, documents, change, classify_fixture
 ):
     ingest(db, documents, ChunkSettings(), limit=2, batch_size=2)
     store = SearchStore(db)
@@ -116,6 +115,7 @@ def test_citations_checked_after_generation_against_current_document_and_policy(
         retriever=KeywordRetriever(store),
         store=store,
         generate=generate,
+        classify=classify_fixture,
     )
     assert out.status == "abstained" and out.answer is None
     assert (
@@ -140,6 +140,7 @@ def test_no_hits_never_invokes_generator_or_discloses_reason_for_missing_documen
             retriever=KeywordRetriever(store),
             store=store,
             generate=lambda *_: pytest.fail("unexpected model call"),
+            classify=lambda *_: pytest.fail("unexpected verifier call"),
         )
         both.append(out.model_dump())
     assert both[0] == both[1] and both[0]["generation"] is None
@@ -147,7 +148,7 @@ def test_no_hits_never_invokes_generator_or_discloses_reason_for_missing_documen
 
 @pytest.mark.parametrize("method", ["keyword", "dense", "hybrid"])
 def test_answer_cli_all_retrievers_return_same_contract(
-    db, documents, embedder, monkeypatch, capsys, method
+    db, documents, embedder, monkeypatch, capsys, method, classify_fixture
 ):
     from enterprise_agent.retrieval import service
     from enterprise_agent.storage.embeddings import index_embeddings
@@ -158,6 +159,7 @@ def test_answer_cli_all_retrievers_return_same_contract(
     monkeypatch.setattr(cli, "connect", lambda: nullcontext(db))
     monkeypatch.setattr(service, "configured_embedder", lambda: embedder)
     monkeypatch.setattr(runtime, "generate", lambda *_: receipts_draft())
+    monkeypatch.setattr(runtime, "classify_local", classify_fixture)
     monkeypatch.setattr(
         sys,
         "argv",

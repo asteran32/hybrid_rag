@@ -50,6 +50,18 @@ def documents():
 
 
 @pytest.fixture
+def classify_fixture():
+    from enterprise_agent.validation.entailment import Relation
+
+    def classify(pairs):
+        return [
+            Relation(float(premise.endswith(claim)), 0.0) for premise, claim in pairs
+        ]
+
+    return classify
+
+
+@pytest.fixture
 def embedder():
     from enterprise_agent.embeddings import ModelSpec
 

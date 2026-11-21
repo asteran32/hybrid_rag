@@ -17,6 +17,8 @@ from enterprise_agent.validation.citations import (
     resolve_citation,
     select_passages,
 )
+from enterprise_agent.validation.entailment import Classifier
+from enterprise_agent.validation.support import review_support
 
 Generate = Callable[[str, dict[str, str]], Generation]
 CONTEXT_CHARS = 6000
@@ -40,6 +42,7 @@ def finalize(
     generated: Generation,
     passages: dict[str, Passage],
     current: dict[str, EvidenceChunk],
+    review_issues: tuple[Limitation, ...] = (),
 ) -> GroundedAnswer:
     draft = generated.outcome
     if isinstance(draft, str):
@@ -55,9 +58,7 @@ def finalize(
         )
 
     conflicts: list[Conflict] = []
-    reasons: list[Limitation] = []
-    if draft.conflicts:
-        reasons.append("conflicting_evidence")
+    reasons: list[Limitation] = list(review_issues)
     invalid_conflict = False
     for pair in draft.conflicts:
         left = resolve_citation(pair.left, passages, current)
@@ -71,6 +72,8 @@ def finalize(
             invalid_conflict = True
         else:
             conflicts.append(Conflict(left=left, right=right))
+    if conflicts:
+        reasons.append("conflicting_evidence")
 
     claims: list[Claim] = []
     invalid_citation = invalid_conflict
@@ -120,6 +123,7 @@ def answer_question(
     retriever: Retriever,
     store: EvidenceStore,
     generate: Generate,
+    classify: Classifier,
 ) -> GroundedAnswer:
     filters = SearchFilter(
         source_type=request.source_type, metadata=request.metadata, scope=scope
@@ -129,13 +133,18 @@ def answer_question(
     passages = select_passages(hits, stored, CONTEXT_CHARS)
     if not passages:
         return GroundedAnswer(status="abstained", limitations=["insufficient_evidence"])
-    generated = generate(
-        request.question, {label: p.text for label, p in passages.items()}
-    )
+    texts = {label: p.text for label, p in passages.items()}
+    generated = generate(request.question, texts)
+    issues = []
+    if not isinstance(generated.outcome, str):
+        draft, issues = review_support(generated.outcome, passages, classify)
+        generated = generated.model_copy(update={"outcome": draft})
     # Use a fresh DB read after the model call, which may outlive an edit or deletion.
     current = (
-        store.load_evidence([p.chunk.chunk_id for p in passages.values()], filters)
+        store.load_evidence(
+            list(dict.fromkeys(p.chunk.chunk_id for p in passages.values())), filters
+        )
         if not isinstance(generated.outcome, str)
         else {}
     )
-    return finalize(generated, passages, current)
+    return finalize(generated, passages, current, tuple(issues))

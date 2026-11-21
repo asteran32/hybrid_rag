@@ -11,6 +11,8 @@ from enterprise_agent.generation.contracts import (
 )
 from enterprise_agent.generation.prompt import PROMPT_VERSION, SYSTEM_PROMPT
 
+MAX_OUTPUT_TOKENS = 1200
+
 
 class GenerationUnavailable(RuntimeError):
     """Configuration, transport, or provider failure. No answer was produced."""
@@ -45,11 +47,19 @@ def generate(question: str, passages: dict[str, str]) -> Generation:
         from openai import APIError, OpenAI
     except ImportError as exc:
         raise GenerationUnavailable(
-            "install the chat client with uv sync --extra openai"
+            "install the answer dependencies with uv sync --extra answer"
         ) from exc
 
     payload = json.dumps(
         {"question": question, "passages": passages}, ensure_ascii=False
+    )
+    schema = AnswerDraft.model_json_schema()
+    schema["$defs"]["PassageRef"]["enum"] = list(passages)
+    # llama.cpp implements the legacy Chat Completions token-limit parameter.
+    limits = (
+        {"max_tokens": MAX_OUTPUT_TOKENS, "temperature": 0}
+        if provider == "local"
+        else {"max_completion_tokens": MAX_OUTPUT_TOKENS}
     )
     try:
         with OpenAI(
@@ -66,11 +76,10 @@ def generate(question: str, passages: dict[str, str]) -> Generation:
                     "json_schema": {
                         "name": "grounded_answer",
                         "strict": True,
-                        "schema": AnswerDraft.model_json_schema(),
+                        "schema": schema,
                     },
                 },
-                max_completion_tokens=1200,
-                **({"temperature": 0} if provider == "local" else {}),
+                **limits,
             )
     except APIError as exc:
         status = getattr(exc, "status_code", None)
@@ -90,7 +99,10 @@ def generate(question: str, passages: dict[str, str]) -> Generation:
     choice = response.choices[0]
     if choice.message.refusal or choice.finish_reason == "content_filter":
         return Generation(outcome="model_refusal", info=info)
-    if choice.finish_reason == "length":
+    if (
+        choice.finish_reason == "length"
+        or (info.output_tokens or 0) > MAX_OUTPUT_TOKENS
+    ):
         return Generation(outcome="output_limit", info=info)
     if choice.finish_reason != "stop" or not choice.message.content:
         return Generation(outcome="invalid_model_output", info=info)

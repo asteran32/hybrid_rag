@@ -2,7 +2,7 @@ import pytest
 
 from enterprise_agent.models import EvidenceChunk, SearchHit
 from enterprise_agent.validation.citations import (
-    QuoteRef,
+    PassageRef,
     resolve_citation,
     select_passages,
 )
@@ -36,33 +36,49 @@ def test_only_canonical_ranked_distinct_evidence_fits_in_budget():
         [hit(denied), wrong_pair, forged, forged, hit(b)], {"a": a, "b": b}, 11
     )
     assert [(p.label, p.chunk, p.text) for p in passages.values()] == [
-        ("E1", a, a.content[:5]),
-        ("E2", b, b.content[:6]),
+        ("E1.1", a, a.content[:5]),
+        ("E2.1", b, b.content[:6]),
     ]
     with pytest.raises(ValueError, match="budget"):
         select_passages([], {}, 0)
 
 
-def test_citation_matches_unique_visible_text_in_unicode_document_coordinates():
-    item = chunk()
+def test_citations_locate_repeated_text_in_unicode_document_coordinates():
+    item = chunk(text="🌿 보고. 승인. 승인. 내일.")
     current = {"a": item}
     passages = select_passages([hit(item)], current, 100)
-    ref = QuoteRef(passage="E1", quote="🌿 승인.")
+    ref = PassageRef("E1.2")
     citation = resolve_citation(ref, passages, current)
     assert citation.document_id == item.document_id and citation.chunk_id == "a"
-    assert citation.start_offset == 12 and citation.end_offset == 12 + len(ref.quote)
-    assert citation.quote == ref.quote and citation.source_path == item.source_path
-    for label, quote in [
-        ("dsid_a", ref.quote),
-        ("E9", ref.quote),
-        ("E1", "승인."),
-        ("E1", " "),
-    ]:
-        assert (
-            resolve_citation(QuoteRef(passage=label, quote=quote), passages, current)
-            is None
-        )
+    start = item.start_offset + len("🌿 보고. ")
+    assert citation.start_offset == start and citation.end_offset == start + len(
+        "승인."
+    )
+    assert citation.quote == "승인." and citation.source_path == item.source_path
+    repeated = resolve_citation(PassageRef("E1.3"), passages, current)
+    assert (
+        repeated.quote == citation.quote
+        and repeated.start_offset == citation.end_offset + 1
+    )
+    for label in ["dsid_a", "E9.1", " ", item.content]:
+        assert resolve_citation(PassageRef(label), passages, current) is None
     assert resolve_citation(ref, passages, {}) is None
     assert resolve_citation(ref, passages, {"a": chunk(text="changed")}) is None
     truncated = select_passages([hit(item)], current, 2)
     assert resolve_citation(ref, truncated, current) is None
+
+
+def test_many_short_lines_have_bounded_labels_and_preserve_source_slices():
+    item = chunk(text="\n".join(f"한 줄 {i}." for i in range(100)) + "\n")
+    current = {"a": item}
+    passages = select_passages([hit(item)], current, 1000)
+    assert 1 <= len(passages) <= 8
+    for label, passage in passages.items():
+        cite = resolve_citation(PassageRef(label), passages, current)
+        assert (
+            item.content[
+                cite.start_offset - item.start_offset : cite.end_offset
+                - item.start_offset
+            ]
+            == passage.text
+        )

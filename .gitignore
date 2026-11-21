@@ -17,3 +17,4 @@ dist/
 all_documents.zip
 *_slice_*.zip
 documents.parquet
+*.gguf

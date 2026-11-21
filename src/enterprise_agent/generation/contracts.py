@@ -9,7 +9,7 @@ from pydantic import (
     computed_field,
 )
 
-from enterprise_agent.validation.citations import Citation, QuoteRef
+from enterprise_agent.validation.citations import Citation, PassageRef
 
 ClaimKind = Literal["fact", "inference"]
 GenerationIssue = Literal["model_refusal", "output_limit", "invalid_model_output"]
@@ -20,6 +20,8 @@ Limitation = (
         "conflicting_evidence",
         "invalid_citation",
         "evidence_changed",
+        "unsupported_claim",
+        "unverified_conflict",
     ]
     | GenerationIssue
 )
@@ -42,20 +44,20 @@ class DraftClaim(BaseModel):
     model_config = ConfigDict(extra="forbid")
     kind: ClaimKind
     text: str
-    citations: list[QuoteRef]
+    citations: list[PassageRef] = Field(max_length=8)
 
 
 class DraftConflict(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    left: QuoteRef
-    right: QuoteRef
+    left: PassageRef
+    right: PassageRef
 
 
 class AnswerDraft(BaseModel):
     model_config = ConfigDict(extra="forbid")
     coverage: Literal["complete", "partial", "insufficient"]
-    claims: list[DraftClaim]
-    conflicts: list[DraftConflict]
+    claims: list[DraftClaim] = Field(max_length=8)
+    conflicts: list[DraftConflict] = Field(max_length=4)
 
 
 class GenerationInfo(BaseModel):

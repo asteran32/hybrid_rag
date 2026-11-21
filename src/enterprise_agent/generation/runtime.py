@@ -9,6 +9,7 @@ from enterprise_agent.generation.service import answer_question
 from enterprise_agent.models import AnswerScope
 from enterprise_agent.retrieval.service import build_retriever
 from enterprise_agent.storage.search import SearchStore
+from enterprise_agent.validation.entailment import classify_local
 
 
 def run_answer(db: Connection, request: AnswerRequest) -> GroundedAnswer:
@@ -36,5 +37,10 @@ def run_answer(db: Connection, request: AnswerRequest) -> GroundedAnswer:
         constant=request.rrf_constant,
     )
     return answer_question(
-        request, scope=scope, retriever=retriever, store=store, generate=generate
+        request,
+        scope=scope,
+        retriever=retriever,
+        store=store,
+        generate=generate,
+        classify=classify_local,
     )
