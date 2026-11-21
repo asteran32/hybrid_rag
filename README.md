@@ -2,7 +2,7 @@
 
 > **EnterpriseRAG-Bench 기반 사내 지식 검색 Agentic RAG 시스템**
 >
-> **구현 상태** · Phase 1 데이터 수집과 Phase 2 검색·평가를 PostgreSQL에서 검증했습니다. 아래 아키텍처의 답변 생성과 에이전트 흐름은 Phase 3 이후의 목표입니다.
+> **구현 상태** · Phase 1 데이터 수집, Phase 2 검색·평가, Phase 3 출처 기반 답변을 구현했습니다. CLI와 HTTP API에서 답변의 각 주장을 원본 문서의 인용 구간까지 추적할 수 있습니다. LangGraph 기반 다단계 검색은 Phase 4입니다.
 
 ## Overview
 
@@ -122,6 +122,9 @@ flowchart TD
 | `src/enterprise_agent/storage/` | PostgreSQL 스키마, 멱등 저장, pgvector 캐시, 검색 SQL과 코퍼스 스냅샷 |
 | `src/enterprise_agent/embeddings.py` | 공통 임베딩 인터페이스, Model2Vec 및 OpenAI 어댑터 |
 | `src/enterprise_agent/retrieval/` | 공통 `search(query, k, filters)` 인터페이스와 RRF |
+| `src/enterprise_agent/generation/` | 검색 1회, 근거 선택, 구조화된 답변 생성, 부분 답변·보류 판정 |
+| `src/enterprise_agent/validation/` | 인용할 원문 구간과 요청별 ID 구성, 권한·위치 대조, 로컬 자연어 추론(NLI) 모델로 주장과 반대 근거 검토 |
+| `src/enterprise_agent/api.py` | CLI와 같은 답변 파이프라인을 사용하는 FastAPI `POST /answer` |
 | `src/enterprise_agent/evaluation/` | 평가 전용 질문 로딩, 원본 문서 단위 지표, JSON 보고서 |
 | `src/enterprise_agent/cli.py`, `tests/` | CLI 진입점, 단위 및 PostgreSQL 통합 테스트 |
 
@@ -168,7 +171,60 @@ uv run enterprise-agent search 'quarterly forecast' --source-type gmail --metada
 
 세 방식 모두 청크 본문과 원본 문서 ID, 청크 ID, 위치, 소스, 경로, 제목, 메타데이터, 점수와 순위를 JSON으로 반환합니다. `component_ranks`에는 해당 청크를 반환한 검색기별 순위가 들어갑니다. 키워드 검색은 PostgreSQL 영어 FTS와 `ts_rank_cd`를 사용하고 제목에 더 큰 가중치를 줍니다. 벡터 검색은 정확한 코사인 유사도를 사용합니다. 하이브리드는 각 후보 목록에 대해 `1 / (rrf_constant + 순위)`를 더하고 청크 ID로 중복을 제거합니다.
 
-### 4. 평가와 테스트
+### 4. 출처를 포함한 답변
+
+수집을 마친 DB와 구조화된 JSON 출력을 지원하는 생성 모델이 필요합니다. 아래 명령은 검증에 사용한 Qwen2.5-1.5B-Instruct Q4_K_M 가중치(약 1.12 GB)를 준비합니다. `llama-server`를 설치한 뒤 별도 터미널에서 서버를 실행합니다. [모델 파일](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/tree/91cad51170dc346986eccefdc2dd33a9da36ead9) · [검증한 llama.cpp 릴리스](https://github.com/ggml-org/llama.cpp/releases/tag/b7712)
+
+```bash
+uv run --locked hf download Qwen/Qwen2.5-1.5B-Instruct-GGUF qwen2.5-1.5b-instruct-q4_k_m.gguf \
+  --revision 91cad51170dc346986eccefdc2dd33a9da36ead9 --local-dir data/models
+llama-server -m data/models/qwen2.5-1.5b-instruct-q4_k_m.gguf \
+  --alias local-model --host 127.0.0.1 --port 8080 -c 8192 -np 1
+```
+
+프로젝트의 `.env`에 아래 값을 설정합니다. `ANSWER_ACCESS_SCOPE`는 이 인스턴스에서 열람할 수 있는 소스를 지정합니다. 특정 문서만 허용하려면 같은 JSON에 `"document_ids":["dsid_…"]`를 추가하고 실제 원본 ID를 넣습니다. 비어 있는 허용 목록으로 시작하면 답변을 보류합니다.
+
+```dotenv
+ANSWER_PROVIDER=local
+ANSWER_BASE_URL=http://127.0.0.1:8080/v1
+ANSWER_MODEL=local-model
+ANSWER_ACCESS_SCOPE='{"source_types":["linear","gmail"]}'
+```
+
+```bash
+uv run --locked --extra answer enterprise-agent answer \
+  'On which two Redwood Console pages is the shift-change companion drawer available?' \
+  --method hybrid --source-type linear --top-k 3
+
+uv run --locked --extra api --extra answer uvicorn enterprise_agent.api:app --host 127.0.0.1 --port 8000
+```
+
+```bash
+curl -sS http://127.0.0.1:8000/answer \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"Which pages host the shift-change companion drawer?","method":"keyword","top_k":3,"source_type":"linear"}'
+```
+
+두 진입점은 같은 출력 계약을 사용합니다. 기본 검색 방식은 `hybrid`이고, `keyword`는 임베딩 인덱스 없이도 사용할 수 있습니다. `source_type`과 `metadata`로 허용 범위 안의 문서를 더 좁힐 수 있습니다. 호스팅된 OpenAI를 선택하려면 `ANSWER_PROVIDER=openai`, 구조화된 출력을 지원하는 `ANSWER_MODEL`, `OPENAI_API_KEY`를 설정합니다. 이 설정은 질문과 허용된 발췌문을 해당 서비스로 전송하며 사용 요금이 발생할 수 있습니다. 로컬 생성에도 같은 Python SDK를 사용합니다.
+
+| 응답 필드 | 읽는 방법 |
+| --- | --- |
+| `status`, `answer` | `answered`는 답변, `partial`은 확인된 부분만 포함한 답변, `abstained`는 보류이며 이때 `answer`는 `null` |
+| `claims[].kind`, `text`, `citations` | 사실(`fact`)과 추론(`inference`)별 근거. 각 인용은 원본 `document_id`, `chunk_id`, 소스, 경로, 제목, 발췌문, 위치를 포함 |
+| `start_offset`, `end_offset` | 정규화된 원본 문서의 유니코드 문자 위치. `document.content[start_offset:end_offset]`으로 `quote`를 복원 |
+| `conflicts`, `limitations` | 상충한다고 판정한 두 근거의 인용과 부분 답변·보류 사유 |
+| `generation` | 생성 제공자, 모델, 프롬프트 버전, 제공자가 보고한 입출력 토큰 수. 생성 호출을 생략하면 `null` |
+
+검색 전에 소스·문서 허용 목록을 적용합니다. 생성 직전에 PostgreSQL에서 청크와 원문 구간을 대조하고, 모델에는 질문과 요청별 ID가 붙은 발췌문만 보냅니다. 생성 후에는 전달했던 모든 청크를 다시 읽습니다. 그 사이 문서가 삭제·수정되거나 허용 범위에서 사라지면 전체 답변을 보류합니다. 답변 한 건의 상한은 질문 4,000자, 검색 청크 20개, 근거 본문 6,000자, 생성 1회, 출력 1,200토큰입니다. 생성 제공자 연결 오류는 CLI 종료 코드 1 또는 HTTP 503으로 전달됩니다.
+
+생성된 각 주장은 별도 모델이 인용 구간과 대조합니다. 인용에 실제로 등장하는 숫자와 영문 대문자 약어, 주장을 지지하는 발췌문, 같은 검색 결과 안의 반대 근거를 검사합니다. `unsupported_claim`은 이 검사를 통과하지 못한 주장이 있다는 뜻입니다. NLI 검증기는 고정 리비전의 mDeBERTa 양자화 모델(약 339 MB)을 처음 사용할 때 캐시에 내려받고 CPU에서 실행합니다. 오프라인 실행은 아래 명령으로 검증기를 준비하고, 사용할 검색 모델도 미리 받은 뒤 `HF_HUB_OFFLINE=1`을 설정합니다. [검증 모델](https://huggingface.co/MoritzLaurer/mDeBERTa-v3-base-mnli-xnli)
+
+```bash
+uv run --locked hf download MoritzLaurer/mDeBERTa-v3-base-mnli-xnli \
+  config.json tokenizer.json onnx/model_quantized.onnx --revision 8adb042d524ecd5c26d3e3ba0e3fbcf7e2d0864c
+```
+
+### 5. 평가와 테스트
 
 ```bash
 uv run enterprise-agent evaluate --questions EnterpriseRAG-Bench/questions.jsonl --limit 500 --dataset-version d36685e273713975ee20299bbf1ab64165575b3c --chunk-depth 50 --candidates 50 --rrf-constant 60 --output experiments/results/phase2-sample180.json
@@ -192,6 +248,8 @@ uv run --all-extras pytest -q
 같은 설정으로 평가를 반복했을 때 1,500개 질문·검색 방식 조합의 청크 순위, 점수와 문서 지표가 모두 일치했습니다. 단위 및 PostgreSQL 통합 테스트 22개가 통과했습니다. OpenAI 어댑터는 모의 응답으로 검증했고, 위 측정에는 로컬 Model2Vec을 사용했습니다.
 
 질문별 전체 결과의 기본 예시 경로는 `experiments/results/phase2-sample180.json`입니다. 재검증 보고서에는 같은 표본을 빈 DB에 다시 수집한 결과와 세 검색 방식의 독립 검산 방법을 기록했습니다. [최초 평가 설정과 결과 요약](experiments/phase2-sample180-summary.json) · [Phase 1·2 재검증 보고서](experiments/phase1-2-verification.md)
+
+Phase 3에서는 같은 표본 DB와 로컬 생성 모델로 CLI 및 HTTP 요청을 실행하고, 반환된 인용 위치를 원본 JSON과 대조했습니다. [Phase 3 검증 방법과 결과](experiments/phase3-verification.md)
 
 ## Retrieval & Answering Policy
 
@@ -243,7 +301,7 @@ uv run --all-extras pytest -q
 
 ## Implementation Roadmap
 
-**Phase 1·2 완료** · 위 표본에서 두 단계의 종료 기준을 검증했습니다. Phase 3~5는 예정 단계입니다.
+**Phase 1~3 완료** · 표본 DB에서 수집·검색·출처 기반 답변의 종료 기준을 검증했습니다. 다음 단계는 Phase 4의 다단계 검색입니다.
 
 ### Phase 1 — Dataset Ingestion & Foundation
 
@@ -267,11 +325,11 @@ uv run --all-extras pytest -q
 
 ### Phase 3 — Grounded Answer Generation
 
-- [ ] Evidence 기반 답변 생성 파이프라인
-- [ ] 문서 ID 및 인용 위치를 포함하는 출력 계약
-- [ ] 존재하지 않는 인용·권한 위반의 결정적 검증
-- [ ] 상충하는 근거와 불확실성 처리
-- [ ] 근거 부족 시 Partial Answer / Abstention 동작 테스트
+- [x] Evidence 기반 답변 생성 파이프라인
+- [x] 문서 ID 및 인용 위치를 포함하는 출력 계약
+- [x] 존재하지 않는 인용·권한 위반의 결정적 검증
+- [x] 상충하는 근거와 불확실성 처리
+- [x] 근거 부족 시 Partial Answer / Abstention 동작 테스트
 
 **Exit criteria:** 검색 결과를 바탕으로 답변하고, 인용 대상 문서가 실제로 존재하는지 검증 가능한 RAG MVP.
 
@@ -297,7 +355,7 @@ uv run --all-extras pytest -q
 
 ## Development Workflow with Codex
 
-`AGENT.md`는 **Codex가 이 저장소에서 코드를 수정할 때 따르는 개발 규칙**입니다. 실제 런타임 Knowledge Agent 프롬프트는 `src/enterprise_agent/agent/prompts/`에 별도로 관리합니다.
+`AGENT.md`는 **Codex가 이 저장소에서 코드를 수정할 때 따르는 개발 규칙**입니다. Phase 3 런타임 프롬프트와 버전은 `src/enterprise_agent/generation/prompt.py`에서 관리합니다.
 
 Codex 작업 시 다음 원칙을 적용합니다.
 
@@ -311,10 +369,12 @@ Codex 작업 시 다음 원칙을 적용합니다.
 
 - 위 비교는 문서 180개의 표본 실험입니다. 전체 코퍼스 성능과 전체 규모의 처리량은 추가 측정이 필요합니다. 현재 벡터 검색은 모델별 청크를 정확 탐색하므로 코퍼스 증가에 따라 지연이 커질 수 있습니다.
 - TXT와 공개 4열 Parquet 배포본에서 얻을 수 있는 메타데이터는 원본 JSON보다 적습니다. 소스별 작성자·시간 필터가 필요하면 원본 JSON을 선택합니다.
-- 현재 수집은 입력에 등장한 문서를 갱신합니다. 원본 디렉터리에서 삭제된 파일의 동기화와 접근 권한 관리는 후속 작업입니다. 서로 다른 코퍼스 스냅샷을 비교할 때는 별도의 빈 DB를 사용합니다.
+- 현재 수집은 입력에 등장한 문서를 갱신합니다. 원본 디렉터리에서 삭제된 파일의 동기화는 후속 작업입니다. 서로 다른 코퍼스 스냅샷을 비교할 때는 별도의 빈 DB를 사용합니다.
 
 - 이 프로젝트는 **합성 기업 데이터 기반 실험 환경**이며, 실제 기업 서비스에 즉시 배포할 수 있는 권한 시스템을 포함하지 않습니다.
 - 합성 문서에서 발견된 조직·인물·의사결정 정보는 상충하거나 오래되었을 수 있습니다.
+- Phase 3의 허용 목록은 로컬 단일 사용자 인스턴스 단위로 적용됩니다. 사용자 인증과 조직별 ACL 연동은 운영 전 추가 작업입니다.
+- 원문 일치와 열람 범위는 DB에서 확인합니다. 주장의 의미, 답변의 충분성, 의미상 충돌 여부는 생성·검증 모델이 판단합니다. 실제 표본에서도 원문에 답이 있는 질문을 보류한 사례가 있습니다.
 - Prompt Injection 방어를 위해 검색 문서 내용을 시스템·개발자 지침으로 실행하지 않습니다.
 - 향후 실제 기업 데이터와 연결할 때는 수집 및 검색 계층에서 사용자별 접근 제어(ACL)를 강제하고 별도 보안 평가를 수행해야 합니다.
 
