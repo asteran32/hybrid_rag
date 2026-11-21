@@ -1,5 +1,9 @@
+import argparse
+import json
+
 import pytest
 
+from enterprise_agent import cli
 from enterprise_agent.embeddings import ModelSpec
 from enterprise_agent.ingestion.pipeline import ingest
 from enterprise_agent.models import ChunkSettings, SearchFilter
@@ -55,6 +59,41 @@ def test_search_filters_cache_and_model_isolation(db, documents, embedder):
     embedder.spec = ModelSpec(provider="test", model="other", dimensions=2)
     with pytest.raises(ValueError, match="no indexed"):
         DenseRetriever(store, embedder)
+
+
+def test_eval_snapshot_coverage_and_cli_report(
+    db, documents, embedder, monkeypatch, tmp_path
+):
+    ingest(db, documents, ChunkSettings(), limit=2, batch_size=1)
+    path = tmp_path / "questions.jsonl"
+    path.write_text(
+        '{"question_id":"q","question":"lunch","expected_doc_ids":["dsid_two"]}\n'
+    )
+    monkeypatch.setattr(cli, "configured_embedder", lambda: embedder)
+    args = argparse.Namespace(
+        questions=path,
+        output=tmp_path / "out.json",
+        dataset_version="fixture-v1",
+        limit=1,
+        candidates=10,
+        rrf_constant=60,
+        chunk_depth=10,
+    )
+    index_embeddings(db, embedder, max_chunks=1, batch_size=2)
+    with pytest.raises(ValueError, match="1/2"):
+        cli.run_evaluation(db, args)
+    index_embeddings(db, embedder, max_chunks=1, batch_size=2)
+    cli.run_evaluation(db, args)
+    report = json.loads(args.output.read_text())
+    assert report["configuration"]["snapshot"]["chunks"] == 2
+    assert report["configuration"]["questions_with_any_gold_in_corpus"] == 1
+    assert set(report["results"]) == {"C0", "C1", "C2"}
+    assert all(r["summary"]["recall@1"] == 1 for r in report["results"].values())
+    original = path.read_bytes()
+    args.output = path
+    with pytest.raises(ValueError, match="separate file"):
+        cli.run_evaluation(db, args)
+    assert path.read_bytes() == original
 
 
 def test_interrupted_embedding_batch_can_resume(db, documents, embedder):

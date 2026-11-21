@@ -1,0 +1,82 @@
+{
+  "created_at": "2026-11-21T02:20:25.459020+00:00",
+  "configuration": {
+    "dataset_version": "d36685e273713975ee20299bbf1ab64165575b3c",
+    "snapshot": {
+      "sha256": "8d8280874bc9b164b20acbd423b3a0d27a379818e9191c8afda2395601e7a7b3",
+      "chunks": 1248,
+      "indexed_chunks": 1248,
+      "by_source": {
+        "confluence": 20,
+        "fireflies": 20,
+        "github": 20,
+        "gmail": 20,
+        "google_drive": 20,
+        "hubspot": 20,
+        "jira": 20,
+        "linear": 20,
+        "slack": 20
+      },
+      "chunking": [
+        {
+          "chunk_size": 1200,
+          "chunk_overlap": 160,
+          "documents": 180
+        }
+      ]
+    },
+    "embedding": {
+      "provider": "model2vec",
+      "model": "minishlab/potion-base-8M",
+      "dimensions": 256,
+      "revision": "bf8b056651a2c21b8d2565580b8569da283cab23"
+    },
+    "questions_file": "questions.jsonl",
+    "questions_sha256": "f9524b9157cd43aae36b99333a124738804306ea6d07f332d49faa6d3d147905",
+    "question_limit": 500,
+    "question_count": 500,
+    "chunk_depth": 50,
+    "rrf_constant": 60,
+    "hybrid_candidate_depth": 50,
+    "methods": {
+      "C0": "english FTS, OR, ts_rank_cd",
+      "C1": "exact cosine",
+      "C2": "RRF(C0,C1)"
+    },
+    "questions_with_any_gold_in_corpus": 24,
+    "gold_document_ids_in_corpus": 23,
+    "distinct_gold_document_ids": 722
+  },
+  "results": {
+    "C0": {
+      "recall@1": 0.029787234042553193,
+      "recall@5": 0.03404255319148936,
+      "recall@10": 0.03856382978723404,
+      "mrr": 0.034548371250498915,
+      "evaluated_questions": 470,
+      "no_gold_questions": 30,
+      "mean_latency_ms": 19.739791911793873,
+      "mean_retrieved_documents": 13.492
+    },
+    "C1": {
+      "recall@1": 0.022340425531914895,
+      "recall@5": 0.035106382978723406,
+      "recall@10": 0.04175531914893617,
+      "mrr": 0.03020414583129065,
+      "evaluated_questions": 470,
+      "no_gold_questions": 30,
+      "mean_latency_ms": 6.111982151574921,
+      "mean_retrieved_documents": 29.76
+    },
+    "C2": {
+      "recall@1": 0.03404255319148936,
+      "recall@5": 0.04069148936170213,
+      "recall@10": 0.04175531914893617,
+      "mrr": 0.03938167521655033,
+      "evaluated_questions": 470,
+      "no_gold_questions": 30,
+      "mean_latency_ms": 23.501497257733718,
+      "mean_retrieved_documents": 23.484
+    }
+  }
+}

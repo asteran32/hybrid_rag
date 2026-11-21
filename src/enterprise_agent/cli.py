@@ -2,6 +2,7 @@ import argparse
 import json
 import logging
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import psycopg
@@ -56,9 +57,91 @@ def parser() -> argparse.ArgumentParser:
     search.add_argument("--top-k", type=positive, default=10)
     search.add_argument("--source-type", choices=SOURCES)
     search.add_argument("--metadata", default="{}", help="JSONB containment filter")
-    search.add_argument("--rrf-constant", type=int, default=60)
-    search.add_argument("--candidates", type=positive, default=50)
+    evaluation = commands.add_parser("evaluate")
+    evaluation.add_argument("--questions", required=True, type=Path)
+    evaluation.add_argument("--limit", type=positive, default=20)
+    evaluation.add_argument("--chunk-depth", type=positive, default=50)
+    evaluation.add_argument("--dataset-version", required=True)
+    evaluation.add_argument("--output", required=True, type=Path)
+    for command in (search, evaluation):
+        command.add_argument("--rrf-constant", type=int, default=60)
+        command.add_argument("--candidates", type=positive, default=50)
     return p
+
+
+def run_evaluation(db: psycopg.Connection, args: argparse.Namespace) -> None:
+    # Only the evaluation command imports or reads questions and relevance labels.
+    from enterprise_agent.evaluation.runner import (
+        evaluate,
+        load_questions,
+        question_file_sha256,
+        write_report,
+    )
+    from enterprise_agent.storage.snapshot import corpus_snapshot
+
+    if args.output.resolve() == args.questions.resolve():
+        raise ValueError(
+            "evaluation output must be a separate file from the benchmark questions"
+        )
+    questions = load_questions(args.questions, args.limit)
+    provider = configured_embedder()
+    with db.transaction():
+        db.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        snapshot = corpus_snapshot(db, provider.spec.key)
+        gold = set().union(*(q.expected_doc_ids for q in questions))
+        present = {
+            r["document_id"]
+            for r in db.execute(
+                "SELECT document_id FROM documents WHERE document_id = ANY(%s::text[])",
+                (list(gold),),
+            )
+        }
+        store = SearchStore(db)
+        keyword = KeywordRetriever(store)
+        dense = DenseRetriever(store, provider)
+        hybrid = HybridRetriever(
+            keyword, dense, candidates=args.candidates, constant=args.rrf_constant
+        )
+        results = evaluate(
+            {"C0": keyword, "C1": dense, "C2": hybrid},
+            questions,
+            chunk_depth=args.chunk_depth,
+        )
+    config = {
+        "dataset_version": args.dataset_version,
+        "snapshot": snapshot,
+        "embedding": provider.spec.model_dump(),
+        "questions_file": args.questions.name,
+        "questions_sha256": question_file_sha256(args.questions),
+        "question_limit": args.limit,
+        "question_count": len(questions),
+        "chunk_depth": args.chunk_depth,
+        "rrf_constant": args.rrf_constant,
+        "hybrid_candidate_depth": max(args.candidates, args.chunk_depth),
+        "methods": {
+            "C0": "english FTS, OR, ts_rank_cd",
+            "C1": "exact cosine",
+            "C2": "RRF(C0,C1)",
+        },
+        "questions_with_any_gold_in_corpus": sum(
+            bool(q.expected_doc_ids & present) for q in questions
+        ),
+        "gold_document_ids_in_corpus": len(present),
+        "distinct_gold_document_ids": len(gold),
+    }
+    write_report(
+        args.output,
+        {
+            "created_at": datetime.now(UTC).isoformat(),
+            "configuration": config,
+            "results": results,
+        },
+    )
+    print(
+        json.dumps(
+            {name: result["summary"] for name, result in results.items()}, indent=2
+        )
+    )
 
 
 def search(db: psycopg.Connection, args: argparse.Namespace) -> None:
@@ -115,6 +198,8 @@ def main() -> int:
                     print(json.dumps({"embeddings_written": count}))
             elif args.command == "search":
                 search(db, args)
+            elif args.command == "evaluate":
+                run_evaluation(db, args)
         return 0
     except (ValueError, OSError, psycopg.Error) as exc:
         print(f"error: {exc}", file=sys.stderr)
