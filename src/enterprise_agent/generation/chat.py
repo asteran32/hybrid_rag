@@ -1,0 +1,101 @@
+import json
+import os
+from urllib.parse import urlsplit
+
+from pydantic import ValidationError
+
+from enterprise_agent.generation.contracts import (
+    AnswerDraft,
+    Generation,
+    GenerationInfo,
+)
+from enterprise_agent.generation.prompt import PROMPT_VERSION, SYSTEM_PROMPT
+
+
+class GenerationUnavailable(RuntimeError):
+    """Configuration, transport, or provider failure. No answer was produced."""
+
+
+def generate(question: str, passages: dict[str, str]) -> Generation:
+    provider = os.getenv("ANSWER_PROVIDER") or "local"
+    model = (os.getenv("ANSWER_MODEL") or "").strip()
+    if provider == "local":
+        base_url = os.getenv("ANSWER_BASE_URL") or "http://127.0.0.1:8080/v1"
+        url = urlsplit(base_url)
+        if url.scheme not in {"http", "https"} or url.hostname not in {
+            "localhost",
+            "127.0.0.1",
+            "::1",
+        }:
+            raise GenerationUnavailable(
+                "ANSWER_PROVIDER=local requires a loopback ANSWER_BASE_URL"
+            )
+        model = model or "local-model"
+        api_key = "local"
+    elif provider == "openai":
+        base_url = "https://api.openai.com/v1"
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not model or not api_key:
+            raise GenerationUnavailable(
+                "configure ANSWER_MODEL and OPENAI_API_KEY for OpenAI generation"
+            )
+    else:
+        raise GenerationUnavailable("ANSWER_PROVIDER must be local or openai")
+    try:
+        from openai import APIError, OpenAI
+    except ImportError as exc:
+        raise GenerationUnavailable(
+            "install the chat client with uv sync --extra openai"
+        ) from exc
+
+    payload = json.dumps(
+        {"question": question, "passages": passages}, ensure_ascii=False
+    )
+    try:
+        with OpenAI(
+            base_url=base_url, api_key=api_key, max_retries=0, timeout=90.0
+        ) as client:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": payload},
+                ],
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "grounded_answer",
+                        "strict": True,
+                        "schema": AnswerDraft.model_json_schema(),
+                    },
+                },
+                max_completion_tokens=1200,
+                **({"temperature": 0} if provider == "local" else {}),
+            )
+    except APIError as exc:
+        status = getattr(exc, "status_code", None)
+        raise GenerationUnavailable(
+            f"answer provider failed ({type(exc).__name__}, status={status})"
+        ) from None
+
+    info = GenerationInfo(
+        provider=provider,
+        model=response.model or model,
+        prompt_version=PROMPT_VERSION,
+        input_tokens=response.usage.prompt_tokens if response.usage else None,
+        output_tokens=response.usage.completion_tokens if response.usage else None,
+    )
+    if not response.choices:
+        return Generation(outcome="invalid_model_output", info=info)
+    choice = response.choices[0]
+    if choice.message.refusal or choice.finish_reason == "content_filter":
+        return Generation(outcome="model_refusal", info=info)
+    if choice.finish_reason == "length":
+        return Generation(outcome="output_limit", info=info)
+    if choice.finish_reason != "stop" or not choice.message.content:
+        return Generation(outcome="invalid_model_output", info=info)
+    try:
+        draft = AnswerDraft.model_validate_json(choice.message.content)
+    except ValidationError:
+        return Generation(outcome="invalid_model_output", info=info)
+    return Generation(outcome=draft, info=info)
