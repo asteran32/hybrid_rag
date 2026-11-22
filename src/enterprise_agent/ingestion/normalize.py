@@ -6,7 +6,13 @@ from typing import Any
 from enterprise_agent.models import Document
 
 LABELS = {"title_field_name", "content_field_names", "dataset_doc_uuid"}
-GOLD_FIELDS = {"gold_answer", "answer_facts", "expected_doc_ids", "question_id"}
+GOLD_FIELDS = {
+    "gold_answer",
+    "answer_facts",
+    "expected_doc_ids",
+    "expected_spans",
+    "question_id",
+}
 BODY_FIELDS = (
     "content",
     "body",

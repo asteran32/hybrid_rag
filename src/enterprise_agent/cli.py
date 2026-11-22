@@ -14,7 +14,11 @@ from enterprise_agent.generation.contracts import AnswerRequest
 from enterprise_agent.generation.runtime import configured_scope, run_answer
 from enterprise_agent.ingestion.loader import SOURCES, load_documents
 from enterprise_agent.ingestion.pipeline import ingest
-from enterprise_agent.models import ChunkSettings, SearchFilter
+from enterprise_agent.models import AnswerScope, ChunkSettings, SearchFilter
+from enterprise_agent.retrieval.pageindex_selector import (
+    PROMPT_VERSION,
+    SelectorSettings,
+)
 from enterprise_agent.retrieval.service import (
     DenseRetriever,
     HybridRetriever,
@@ -32,6 +36,14 @@ def positive(value: str) -> int:
     if number < 1:
         raise argparse.ArgumentTypeError("must be positive")
     return number
+
+
+METHODS = {
+    "keyword": ("C0", "english FTS, OR, ts_rank_cd"),
+    "dense": ("C1", "exact cosine"),
+    "hybrid": ("C2", "RRF(C0,C1)"),
+    "pageindex": ("PI", "local LLM over Markdown document trees"),
+}
 
 
 def parser() -> argparse.ArgumentParser:
@@ -67,7 +79,7 @@ def parser() -> argparse.ArgumentParser:
         command.add_argument("query")
         command.add_argument(
             "--method",
-            choices=("keyword", "dense", "hybrid", "pageindex"),
+            choices=METHODS,
             default=method,
         )
         command.add_argument("--top-k", type=positive, default=top_k)
@@ -76,6 +88,9 @@ def parser() -> argparse.ArgumentParser:
             "--metadata", default="{}", help="JSONB containment filter"
         )
     evaluation = commands.add_parser("evaluate")
+    evaluation.add_argument(
+        "--methods", choices=METHODS, nargs="+", default=["keyword", "dense", "hybrid"]
+    )
     evaluation.add_argument("--questions", required=True, type=Path)
     evaluation.add_argument("--limit", type=positive, default=20)
     evaluation.add_argument("--chunk-depth", type=positive, default=50)
@@ -87,7 +102,7 @@ def parser() -> argparse.ArgumentParser:
     return p
 
 
-def run_evaluation(db: psycopg.Connection, args: argparse.Namespace) -> None:
+def run_evaluation(db: psycopg.Connection, args: argparse.Namespace) -> int:
     # Only the evaluation command imports or reads questions and relevance labels.
     from enterprise_agent.evaluation.runner import (
         evaluate,
@@ -102,10 +117,19 @@ def run_evaluation(db: psycopg.Connection, args: argparse.Namespace) -> None:
             "evaluation output must be a separate file from the benchmark questions"
         )
     questions = load_questions(args.questions, args.limit)
-    provider = configured_embedder()
+    selected = tuple(
+        dict.fromkeys(getattr(args, "methods", ["keyword", "dense", "hybrid"]))
+    )
+    provider = (
+        configured_embedder() if {"dense", "hybrid"}.intersection(selected) else None
+    )
     with db.transaction():
         db.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
-        snapshot = corpus_snapshot(db, provider.spec.key)
+        snapshot = corpus_snapshot(
+            db,
+            provider.spec.key if provider else None,
+            pageindex="pageindex" in selected,
+        )
         gold = set().union(*(q.expected_doc_ids for q in questions))
         present = {
             r["document_id"]
@@ -116,19 +140,38 @@ def run_evaluation(db: psycopg.Connection, args: argparse.Namespace) -> None:
         }
         store = SearchStore(db)
         keyword = KeywordRetriever(store)
-        dense = DenseRetriever(store, provider)
-        hybrid = HybridRetriever(
-            keyword, dense, candidates=args.candidates, constant=args.rrf_constant
-        )
+        methods = {"keyword": keyword}
+        if provider:
+            dense = DenseRetriever(store, provider)
+            methods.update(
+                dense=dense,
+                hybrid=HybridRetriever(
+                    keyword,
+                    dense,
+                    candidates=args.candidates,
+                    constant=args.rrf_constant,
+                ),
+            )
+        if "pageindex" in selected:
+            methods["pageindex"] = build_retriever(
+                store,
+                "pageindex",
+                candidates=args.candidates,
+                constant=args.rrf_constant,
+            )
         results = evaluate(
-            {"C0": keyword, "C1": dense, "C2": hybrid},
+            {METHODS[key][0]: methods[key] for key in selected},
             questions,
             chunk_depth=args.chunk_depth,
+            present=present,
+            filters=SearchFilter(
+                scope=AnswerScope(source_types=tuple(snapshot["by_source"]))
+            ),
         )
     config = {
         "dataset_version": args.dataset_version,
         "snapshot": snapshot,
-        "embedding": provider.spec.model_dump(),
+        "embedding": provider.spec.model_dump() if provider else None,
         "questions_file": args.questions.name,
         "questions_sha256": question_file_sha256(args.questions),
         "question_limit": args.limit,
@@ -136,17 +179,19 @@ def run_evaluation(db: psycopg.Connection, args: argparse.Namespace) -> None:
         "chunk_depth": args.chunk_depth,
         "rrf_constant": args.rrf_constant,
         "hybrid_candidate_depth": max(args.candidates, args.chunk_depth),
-        "methods": {
-            "C0": "english FTS, OR, ts_rank_cd",
-            "C1": "exact cosine",
-            "C2": "RRF(C0,C1)",
-        },
+        "methods": dict(METHODS[key] for key in selected),
         "questions_with_any_gold_in_corpus": sum(
             bool(q.expected_doc_ids & present) for q in questions
         ),
         "gold_document_ids_in_corpus": len(present),
         "distinct_gold_document_ids": len(gold),
     }
+    if "pageindex" in selected:
+        config["pageindex"] = {
+            **SelectorSettings.configured().model_dump(exclude={"base_url"}),
+            "prompt_version": PROMPT_VERSION,
+            "provider": "local",
+        }
     write_report(
         args.output,
         {
@@ -158,6 +203,12 @@ def run_evaluation(db: psycopg.Connection, args: argparse.Namespace) -> None:
     print(
         json.dumps(
             {name: result["summary"] for name, result in results.items()}, indent=2
+        )
+    )
+    return int(
+        any(
+            r["summary"].get("navigation", {}).get("errors", 0)
+            for r in results.values()
         )
     )
 
@@ -230,7 +281,7 @@ def main() -> int:
                 )
                 print(run_answer(db, request).model_dump_json(indent=2))
             elif args.command == "evaluate":
-                run_evaluation(db, args)
+                return run_evaluation(db, args)
         return 0
     except (
         ValueError,

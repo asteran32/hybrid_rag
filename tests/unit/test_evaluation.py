@@ -1,6 +1,10 @@
 import json
 
-from enterprise_agent.evaluation.metrics import document_metrics
+from enterprise_agent.evaluation.metrics import (
+    ReferenceSpan,
+    document_metrics,
+    span_recall,
+)
 from enterprise_agent.evaluation.runner import evaluate, load_questions, write_report
 from enterprise_agent.models import SearchHit
 
@@ -19,6 +23,20 @@ def test_document_metrics_multiple_gold_and_duplicate_chunks():
         "recall@5": 0,
         "recall@10": 1,
         "mrr": 1 / 6,
+    }
+
+
+def test_reference_passage_requires_full_coverage_in_the_right_document():
+    ref = ReferenceSpan(document_id="dsid_right", start=5, end=20)
+    chunks = [
+        {"document_id": "dsid_right", "spans": [[5, 12]]},
+        {"document_id": "dsid_wrong", "spans": [[0, 20]]},
+        {"document_id": "dsid_right", "spans": [[12, 20]]},
+    ]
+    assert span_recall(chunks, [ref]) == {
+        "span_recall@1": 0,
+        "span_recall@5": 1,
+        "span_recall@10": 1,
     }
 
 
