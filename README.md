@@ -173,6 +173,20 @@ uv run enterprise-agent search 'quarterly forecast' --source-type gmail --metada
 
 세 방식 모두 청크 본문과 원본 문서 ID, 청크 ID, 위치, 소스, 경로, 제목, 메타데이터, 점수와 순위를 JSON으로 반환합니다. `component_ranks`에는 해당 청크를 반환한 검색기별 순위가 들어갑니다. 키워드 검색은 PostgreSQL 영어 FTS와 `ts_rank_cd`를 사용하고 제목에 더 큰 가중치를 줍니다. 벡터 검색은 정확한 코사인 유사도를 사용합니다. 하이브리드는 각 후보 목록에 대해 `1 / (rrf_constant + 순위)`를 더하고 청크 ID로 중복을 제거합니다.
 
+#### PageIndex 목차 검색
+
+이 브랜치에서는 PageIndex `0.2.10`의 Markdown 파서로 문서별 목차를 생성합니다. 벤치마크 텍스트를 직접 색인하며, 로컬 LLM이 허용된 문서의 제목·발췌, 하위 목차, 원문 구간을 차례로 선택합니다. `matched_spans`는 선택한 근거의 유니코드 문자 위치입니다. 답변기는 해당 범위에서 인용을 구성합니다. [구현 계획](experiments/pageindex-implementation-plan.md) · [PageIndex 공개 소스](https://github.com/VectifyAI/PageIndex/tree/add6b17cebff528612748ede3fed565b5f726c6b)
+
+```bash
+uv run --locked --extra pageindex enterprise-agent init-db
+uv run --locked --extra pageindex enterprise-agent build-index --kind pageindex --input EnterpriseRAG-Bench
+uv run --locked enterprise-agent search 'Which pages host the shift-change companion drawer?' --method pageindex --source-type linear
+```
+
+먼저 문서를 수집한 DB에서 실행합니다. JSON 원본 디렉터리를 지정하면 정규화된 필드 경계를 복원합니다. `--input`을 생략하면 저장된 본문의 제목과 문단을 사용합니다. 색인은 문서 지문과 버전이 같은 트리를 재사용합니다. 검색에는 아래 답변 절에 설명한 로컬 모델 서버와 `ANSWER_ACCESS_SCOPE`가 필요합니다. 같은 값을 CLI `answer --method pageindex`와 HTTP `POST /answer`의 `method`로 지정할 수 있습니다.
+
+탐색 설정은 `.env.example`의 `PAGEINDEX_*` 항목에서 조정합니다. `PAGEINDEX_CONTEXT_TOKENS`는 서버가 질의 하나에 할당하는 문맥 길이입니다. 모델과 일치하는 `tokenizer.json`이 있으면 `PAGEINDEX_TOKENIZER_PATH`에 지정합니다. 기본값은 UTF-8 바이트 수를 이용한 보수적인 추정입니다. 작은 모델에서도 제목을 대조할 수 있도록 문서 목록을 기본 20개씩 제시하고 묶음별 후보들을 한 번 더 비교합니다. 질문당 모델 호출 상한은 기본 32회이며 형식 오류 재시도 1회도 여기에 포함됩니다.
+
 ### 4. 출처를 포함한 답변
 
 수집을 마친 DB와 구조화된 JSON 출력을 지원하는 생성 모델이 필요합니다. 아래 명령은 검증에 사용한 Qwen2.5-1.5B-Instruct Q4_K_M 가중치(약 1.12 GB)를 준비합니다. `llama-server`를 설치한 뒤 별도 터미널에서 서버를 실행합니다. [모델 파일](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/tree/91cad51170dc346986eccefdc2dd33a9da36ead9) · [검증한 llama.cpp 릴리스](https://github.com/ggml-org/llama.cpp/releases/tag/b7712)
@@ -227,6 +241,8 @@ uv run --locked hf download MoritzLaurer/mDeBERTa-v3-base-mnli-xnli \
 ```
 
 ### 5. 평가와 테스트
+
+`evaluate --methods keyword dense hybrid pageindex`는 C0·C1·C2·PI를 같은 스냅샷에서 비교합니다. `--methods pageindex`는 트리 커버리지만 검사합니다. 평가는 지정한 DB 전체를 대상으로 하므로 실험용 DB를 사용합니다. PI 결과에는 후보 문서 순위, 탐색 노드, 토큰·호출 수, 오류와 종료 사유가 기록됩니다. 개발 질문에 `expected_spans`를 지정하면 상위 1·5·10개 청크가 표시된 근거 구간 전체를 포함하는지도 채점합니다. [근거 위치가 표시된 개발 질문](experiments/pageindex-development.jsonl)
 
 ```bash
 uv run enterprise-agent evaluate --questions EnterpriseRAG-Bench/questions.jsonl --limit 500 --dataset-version d36685e273713975ee20299bbf1ab64165575b3c --chunk-depth 50 --candidates 50 --rrf-constant 60 --output experiments/results/phase2-sample180.json

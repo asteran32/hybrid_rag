@@ -35,6 +35,15 @@ def test_unknown_duplicate_and_boolean_ids_do_not_escape_batch():
         LocalSelector(SelectorSettings(base_url="https://example.com/v1"))
 
 
+def test_model_considers_each_catalog_batch_then_ranks_their_candidates():
+    nav = Navigation(
+        Script([[2], [1], [1], [2]]), SelectorSettings(document_batch_size=2), "q"
+    )
+    options = [(str(i), "description") for i in range(5)]
+    assert nav.choose("document", options, 3) == ["2"]
+    assert nav.trace.calls_by_stage == {"document": 4}
+
+
 def test_different_lines_and_long_sentences_keep_original_offsets():
     text = "  🌲 one.\r\n" + "The item. " * 50
     ranges = source_passages(text, 100)

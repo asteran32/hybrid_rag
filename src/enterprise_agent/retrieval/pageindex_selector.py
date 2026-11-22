@@ -33,6 +33,7 @@ class SelectorSettings(BaseModel, frozen=True):
     output_tokens: int = Field(default=384, ge=16)
     max_calls: int = Field(default=32, ge=1)
     candidates: int = Field(default=20, ge=1, le=100)
+    document_batch_size: int = Field(default=20, ge=1)
     timeout_seconds: float = Field(default=120, gt=0)
     model_revision: str | None = None
     tokenizer_path: Path | None = None
@@ -279,7 +280,13 @@ class Navigation:
                 # A source sentence is never shown truncated and then cited in full.
                 self.trace.stop_reason = "context_exhausted"
                 continue
-            if batch and used + size > budget:
+            if batch and (
+                used + size > budget
+                or (
+                    stage == "document"
+                    and len(batch) >= self.settings.document_batch_size
+                )
+            ):
                 batches.append(batch)
                 batch, used = [], 0
             batch.append((key, label))
