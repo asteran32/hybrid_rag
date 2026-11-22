@@ -11,7 +11,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-answer = ["openai>=1.55,<3", "onnxruntime>=1.20,<2", "numpy>=1.26,<3", "tokenizers>=0.20,<1"]
+answer = ["openai>=1.55,<3", "onnxruntime>=1.20,<2", "numpy>=1.26,<3", "tokenizers>=0.20,<1", "langgraph>=1.0,<2"]
 api = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1"]
 openai = ["openai>=1.55,<3"]
 parquet = ["pyarrow>=18"]
@@ -32,4 +32,7 @@ packages = ["src/enterprise_agent"]
 [tool.pytest.ini_options]
 addopts = "--import-mode=importlib"
 testpaths = ["tests"]
-markers = ["integration: requires a disposable schema in TEST_DATABASE_URL"]
+markers = [
+    "integration: requires a disposable schema in TEST_DATABASE_URL",
+    "llm: exercises an LLM provider or its chat adapter",
+]

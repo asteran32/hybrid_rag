@@ -95,6 +95,12 @@ class OpenAIEmbeddings:
         self.client = OpenAI(max_retries=0, timeout=60.0)
 
     def embed(self, texts: list[str]) -> list[list[float]]:
+        vectors, _ = self.embed_with_usage(texts)
+        return vectors
+
+    def embed_with_usage(
+        self, texts: list[str], *, timeout: float | None = None
+    ) -> tuple[list[list[float]], int | None]:
         from openai import APIError
 
         kwargs = (
@@ -102,6 +108,8 @@ class OpenAIEmbeddings:
             if self.spec.model == "text-embedding-ada-002"
             else {"dimensions": self.spec.dimensions}
         )
+        if timeout is not None:
+            kwargs["timeout"] = timeout
         try:
             response = self.client.embeddings.create(
                 model=self.spec.model, input=texts, **kwargs
@@ -114,7 +122,10 @@ class OpenAIEmbeddings:
         ordered = sorted(response.data, key=lambda item: item.index)
         if [item.index for item in ordered] != list(range(len(texts))):
             raise ValueError("OpenAI returned inconsistent embedding indices")
-        return [item.embedding for item in ordered]
+        usage = getattr(response, "usage", None)
+        return [
+            item.embedding for item in ordered
+        ], usage.prompt_tokens if usage else None
 
 
 def configured_embedder() -> Embedder:

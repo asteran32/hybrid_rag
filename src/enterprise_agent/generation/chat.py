@@ -1,5 +1,6 @@
 import json
 import os
+from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
 from pydantic import ValidationError
@@ -10,6 +11,9 @@ from enterprise_agent.generation.contracts import (
     GenerationInfo,
 )
 from enterprise_agent.generation.prompt import PROMPT_VERSION, SYSTEM_PROMPT
+
+if TYPE_CHECKING:
+    from openai.types.chat import ChatCompletion
 
 MAX_OUTPUT_TOKENS = 1200
 
@@ -43,6 +47,56 @@ def generate(question: str, passages: dict[str, str]) -> Generation:
             )
     else:
         raise GenerationUnavailable("ANSWER_PROVIDER must be local or openai")
+    # llama.cpp implements the legacy Chat Completions token-limit parameter.
+    limits = (
+        {"max_tokens": MAX_OUTPUT_TOKENS, "temperature": 0}
+        if provider == "local"
+        else {"max_completion_tokens": MAX_OUTPUT_TOKENS}
+    )
+    response = request_completion(
+        model,
+        answer_payload(question, passages),
+        base_url=base_url,
+        api_key=api_key,
+        limits=limits,
+        timeout=90.0,
+    )
+    return read_generation(response, provider, model)
+
+
+def structured_payload(name: str, system: str, data: dict, schema: dict) -> dict:
+    return {
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": json.dumps(data, ensure_ascii=False)},
+        ],
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {"name": name, "strict": True, "schema": schema},
+        },
+    }
+
+
+def answer_payload(question: str, passages: dict[str, str]) -> dict:
+    schema = AnswerDraft.model_json_schema()
+    schema["$defs"]["PassageRef"]["enum"] = list(passages)
+    return structured_payload(
+        "grounded_answer",
+        SYSTEM_PROMPT,
+        {"question": question, "passages": passages},
+        schema,
+    )
+
+
+def request_completion(
+    model: str,
+    payload: dict,
+    *,
+    base_url: str,
+    api_key: str,
+    limits: dict,
+    timeout: float,
+) -> "ChatCompletion":
     try:
         from openai import APIError, OpenAI
     except ImportError as exc:
@@ -50,43 +104,21 @@ def generate(question: str, passages: dict[str, str]) -> Generation:
             "install the answer dependencies with uv sync --extra answer"
         ) from exc
 
-    payload = json.dumps(
-        {"question": question, "passages": passages}, ensure_ascii=False
-    )
-    schema = AnswerDraft.model_json_schema()
-    schema["$defs"]["PassageRef"]["enum"] = list(passages)
-    # llama.cpp implements the legacy Chat Completions token-limit parameter.
-    limits = (
-        {"max_tokens": MAX_OUTPUT_TOKENS, "temperature": 0}
-        if provider == "local"
-        else {"max_completion_tokens": MAX_OUTPUT_TOKENS}
-    )
     try:
         with OpenAI(
-            base_url=base_url, api_key=api_key, max_retries=0, timeout=90.0
+            base_url=base_url, api_key=api_key, max_retries=0, timeout=timeout
         ) as client:
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": payload},
-                ],
-                response_format={
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "grounded_answer",
-                        "strict": True,
-                        "schema": schema,
-                    },
-                },
-                **limits,
-            )
+            return client.chat.completions.create(model=model, **payload, **limits)
     except APIError as exc:
         status = getattr(exc, "status_code", None)
         raise GenerationUnavailable(
             f"answer provider failed ({type(exc).__name__}, status={status})"
         ) from None
 
+
+def read_generation(
+    response: "ChatCompletion", provider: str, model: str
+) -> Generation:
     info = GenerationInfo(
         provider=provider,
         model=response.model or model,

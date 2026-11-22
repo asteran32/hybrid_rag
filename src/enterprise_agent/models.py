@@ -48,6 +48,13 @@ class AnswerScope(BaseModel):
     source_types: tuple[str, ...]
     document_ids: tuple[DocumentID, ...] | None = None
 
+    def allows_source(self, source_type: str | None) -> bool:
+        return bool(
+            self.source_types
+            and self.document_ids != ()
+            and (source_type is None or source_type in self.source_types)
+        )
+
 
 class SearchFilter(BaseModel):
     source_type: str | None = None
@@ -61,8 +68,11 @@ class EvidenceChunk(DocumentChunk):
     title: str | None
 
 
-class SearchHit(EvidenceChunk):
+class SearchEvidence(EvidenceChunk):
     metadata: dict[str, JsonValue]
+
+
+class SearchHit(SearchEvidence):
     score: float
     rank: PositiveInt
     component_ranks: dict[str, int]

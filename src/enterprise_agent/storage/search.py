@@ -37,8 +37,14 @@ def _hits(rows: list[dict], method: str) -> list[SearchHit]:
 
 
 class SearchStore:
+    evidence_projection = EVIDENCE_FIELDS
+    evidence_model = EvidenceChunk
+
     def __init__(self, db: Connection):
         self.db = db
+
+    def _execute(self, query: str, params: list | tuple):
+        return self.db.execute(query, params)
 
     def load_evidence(
         self, chunk_ids: list[str], filters: SearchFilter
@@ -49,9 +55,9 @@ class SearchStore:
         if not chunk_ids:
             return {}
         where, params = _filters(filters)
-        rows = self.db.execute(
+        rows = self._execute(
             f"""
-            SELECT {EVIDENCE_FIELDS} FROM chunks c JOIN documents d USING(document_id)
+            SELECT {self.evidence_projection} FROM chunks c JOIN documents d USING(document_id)
             WHERE c.chunk_id = ANY(%s::text[]) {where}
               AND c.start_offset >= 0 AND c.end_offset <= char_length(d.content)
               AND c.content = substring(d.content FROM c.start_offset + 1
@@ -59,7 +65,7 @@ class SearchStore:
             """,
             [chunk_ids, *params],
         )
-        return {row["chunk_id"]: EvidenceChunk(**row) for row in rows}
+        return {row["chunk_id"]: self.evidence_model(**row) for row in rows}
 
     def keyword(
         self, query: str, k: int, filters: SearchFilter | None
@@ -70,7 +76,7 @@ class SearchStore:
             return []
         fts_query = " OR ".join(f'"{term}"' for term in terms)
         where, params = _filters(filters)
-        rows = self.db.execute(
+        rows = self._execute(
             f"""
             SELECT {PROJECTION}, ts_rank_cd(c.search_vector, q) AS score
             FROM chunks c JOIN documents d USING(document_id),
@@ -86,7 +92,7 @@ class SearchStore:
         self, vector: list[float], model_key: str, k: int, filters: SearchFilter | None
     ) -> list[SearchHit]:
         where, params = _filters(filters)
-        rows = self.db.execute(
+        rows = self._execute(
             f"""
             SELECT {PROJECTION}, 1 - (e.embedding <=> %s::vector) AS score
             FROM chunk_embeddings e JOIN chunks c USING(chunk_id) JOIN documents d USING(document_id)
@@ -98,7 +104,7 @@ class SearchStore:
         return _hits(rows, "dense")
 
     def require_embeddings(self, model_key: str) -> None:
-        if not self.db.execute(
+        if not self._execute(
             "SELECT 1 FROM chunk_embeddings WHERE model_key=%s LIMIT 1", (model_key,)
         ).fetchone():
             raise ValueError(

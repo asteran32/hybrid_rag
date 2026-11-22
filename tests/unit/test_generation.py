@@ -154,6 +154,7 @@ def test_draft_cannot_supply_its_own_document_location_or_quote():
         )
 
 
+@pytest.mark.llm
 @pytest.mark.parametrize(
     ("message", "finish", "expected"),
     [
@@ -237,6 +238,7 @@ def test_chat_adapter_uses_strict_schema_and_treats_passages_as_data(
     assert "private" not in result.model_dump_json()
 
 
+@pytest.mark.llm
 def test_invalid_generation_configuration_fails_before_network(monkeypatch):
     monkeypatch.setenv("ANSWER_PROVIDER", "local")
     monkeypatch.setenv("ANSWER_BASE_URL", "https://example.org/v1")
@@ -248,6 +250,7 @@ def test_invalid_generation_configuration_fails_before_network(monkeypatch):
         chat.generate("q", {})
 
 
+@pytest.mark.llm
 def test_hosted_adapter_reports_provider_failure_once_without_echoing_response(
     monkeypatch,
 ):
