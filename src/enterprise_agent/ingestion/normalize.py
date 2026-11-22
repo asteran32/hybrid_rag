@@ -29,6 +29,13 @@ def render(value: Any) -> str:
 
 
 def normalize(raw: dict, source: str, path: str) -> Document:
+    return normalize_with_sections(raw, source, path)[0]
+
+
+def normalize_with_sections(
+    raw: dict, source: str, path: str
+) -> tuple[Document, list[tuple[str, int, int]]]:
+    """Build the canonical text and the exact spans of its contributing fields."""
     if not isinstance(raw, dict) or GOLD_FIELDS.intersection(raw):
         raise ValueError("expected a source document, received a non-document record")
     title_key = raw.get("title_field_name")
@@ -49,12 +56,17 @@ def normalize(raw: dict, source: str, path: str) -> Document:
     if not fields:
         fields = [k for k in BODY_FIELDS if k in raw and k != title_key]
     parts = []
+    sections = []
+    offset = 0
     for key in fields:
         value = render(raw[key])
         if value.strip():
-            parts.append(value if len(fields) == 1 else f"{key}\n{value}")
+            part = value if len(fields) == 1 else f"{key}\n{value}"
+            sections.append((key, offset, offset + len(part)))
+            parts.append(part)
+            offset += len(part) + 2
     metadata = {k: v for k, v in raw.items() if k not in LABELS and k not in fields}
-    return Document(
+    document = Document(
         document_id=raw.get("dataset_doc_uuid"),
         source_type=source,
         source_path=path,
@@ -62,3 +74,4 @@ def normalize(raw: dict, source: str, path: str) -> Document:
         content="\n\n".join(parts),
         metadata=metadata,
     )
+    return document, sections
