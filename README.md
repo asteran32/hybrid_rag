@@ -2,7 +2,7 @@
 
 > **EnterpriseRAG-Bench 기반 사내 지식 검색 Agentic RAG 시스템**
 >
-> **구현 상태** · Phase 1 데이터 수집, Phase 2 검색·평가, Phase 3 출처 기반 답변을 구현했습니다. CLI와 HTTP API에서 답변의 각 주장을 원본 문서의 인용 구간까지 추적할 수 있습니다. LangGraph 기반 다단계 검색은 Phase 4입니다.
+> **구현 상태** · Phase 1~3의 수집·검색·출처 기반 답변에 Phase 4의 LangGraph 다단계 검색을 추가했습니다. CLI와 HTTP API에서 `agentic`을 선택하면 하위 질문, 도구 호출, 재검색 사유와 인용한 원문 위치를 확인할 수 있습니다. Phase 4는 고정된 계획과 임시 PostgreSQL 스키마로 검증했으며 실제 OpenAI 품질 측정은 후속 실험입니다.
 
 [워크플로우와 검증 그래프 보기 (HTML)](experiments/workflow-report.html) · 파일을 내려받아 브라우저에서 열면 수집·답변 단계와 표본 실험 결과를 살펴볼 수 있습니다.
 
@@ -124,7 +124,8 @@ flowchart TD
 | `src/enterprise_agent/storage/` | PostgreSQL 스키마, 멱등 저장, pgvector 캐시, 검색 SQL과 코퍼스 스냅샷 |
 | `src/enterprise_agent/embeddings.py` | 공통 임베딩 인터페이스, Model2Vec 및 OpenAI 어댑터 |
 | `src/enterprise_agent/retrieval/` | 공통 `search(query, k, filters)` 인터페이스와 RRF |
-| `src/enterprise_agent/generation/` | 검색 1회, 근거 선택, 구조화된 답변 생성, 부분 답변·보류 판정 |
+| `src/enterprise_agent/generation/` | 근거 선택, 구조화된 답변 생성, 부분 답변·보류 판정 |
+| `src/enterprise_agent/agent/` | LangGraph의 계획·검색·근거 검토·재검색 분기, OpenAI 호출 예산과 요청별 실행 기록 |
 | `src/enterprise_agent/validation/` | 인용할 원문 구간과 요청별 ID 구성, 권한·위치 대조, 로컬 자연어 추론(NLI) 모델로 주장과 반대 근거 검토 |
 | `src/enterprise_agent/api.py` | CLI와 같은 답변 파이프라인을 사용하는 FastAPI `POST /answer` |
 | `src/enterprise_agent/evaluation/` | 평가 전용 질문 로딩, 원본 문서 단위 지표, JSON 보고서 |
@@ -226,12 +227,48 @@ uv run --locked hf download MoritzLaurer/mDeBERTa-v3-base-mnli-xnli \
   config.json tokenizer.json onnx/model_quantized.onnx --revision 8adb042d524ecd5c26d3e3ba0e3fbcf7e2d0864c
 ```
 
-### 5. 평가와 테스트
+### 5. Phase 4 다단계 검색
+
+`agentic`은 OpenAI로 질문을 분류하고 검색 근거를 검토합니다. 답변을 요청하면 같은 OpenAI 모델이 검증할 초안을 생성합니다. 기본 모델은 `gpt-5.4-mini-2026-03-17`이며 기본 검색 인덱스는 기존 로컬 Model2Vec을 사용합니다. 질문과 열람이 허용된 발췌문이 OpenAI로 전송됩니다. [OpenAI 모델과 표준 단가](https://developers.openai.com/api/docs/models/gpt-5.4-mini)
+
+1. 단순 질문은 원래 질문으로 하이브리드 검색을 한 번 수행합니다. 복합 질문은 2~3개 하위 질문으로 분해하고 각 질문에 `keyword`, `dense`, `hybrid` 중 하나를 배정합니다.
+2. 여러 검색의 청크 순위를 RRF로 통합합니다. 상위 청크 중 최대 20개에서 원문과 일치하는 발췌문 총 6,000자 이내를 검토하고, 각 하위 질문을 뒷받침하는 인용 위치를 기록합니다.
+3. 미해결 하위 질문이 있으면 발췌문에서 찾은 이름이나 식별자로 다음 검색을 제안할 수 있습니다. 예를 들어 Slack 논의와 GitHub 변경을 비교할 때 Slack에서 발견한 PR 번호로 GitHub 근거를 다시 찾을 수 있습니다. 같은 검색어와 도구를 반복하면 종료합니다.
+4. 답변은 Phase 3의 원문·인용·주장 검증을 거칩니다. 일부만 확인했으면 부분 답변을 반환하고, 근거가 없거나 이미 검토한 문서의 내용·열람 조건이 바뀌면 답변을 보류합니다.
+
+`.env`에 `OPENAI_API_KEY`와 `ANSWER_ACCESS_SCOPE`를 설정하고, 하이브리드 검색용 인덱스를 준비합니다. 예를 들어 Slack과 GitHub를 열람할 수 있는 인스턴스는 `ANSWER_ACCESS_SCOPE='{"source_types":["slack","github"]}'`를 사용합니다. 같은 허용 목록과 요청의 메타데이터 필터가 모든 검색·재검색·원문 대조에 적용됩니다.
+
+```bash
+uv sync --locked --extra answer --extra api
+uv run --locked --extra answer enterprise-agent search 'Why was the rollout paused, and which PR addressed it?' --method agentic --top-k 5
+uv run --locked --extra answer enterprise-agent answer 'Why was the rollout paused, and which PR addressed it?' --method agentic --top-k 5
+```
+
+HTTP에서는 기존 `POST /answer` 요청에 `"method":"agentic"`을 지정합니다. CLI 검색은 `hits`와 `trace`를, 답변은 인용이 포함된 응답과 `trace`를 반환합니다. `trace.tool_calls`에는 하위 질문 번호, 도구, 검색어, 재검색 여부와 소요 시간이 기록됩니다. `trace.reviews`에는 검토별 미해결 질문과 원본 문서·청크·문자 위치가 담깁니다. 애플리케이션 로그 수준을 INFO로 설정하면 `run_id`로 응답과 서버의 `agent_trace`를 연결할 수 있습니다.
+
+| 요청별 한도 | 기본값 | 환경 변수 |
+| --- | ---: | --- |
+| 최초 검색 이후 추가 검색 횟수 | 2회 | `RAG_AGENT_MAX_RETRIES` |
+| 실행 시간 | 60초 | `RAG_AGENT_MAX_SECONDS` |
+| 입력·출력 토큰 합계 | 64,000 | `RAG_AGENT_MAX_TOKENS` |
+| 추정 API 비용 | US$0.05 | `RAG_AGENT_MAX_COST_USD` |
+
+계획·근거 검토·답변 생성과 유료 질의 임베딩은 한 예산을 공유합니다. 호출 전에 입력 UTF-8 바이트 수와 서식 여유분, 최대 출력 토큰으로 비용을 예약합니다. 사용량이 도착하면 보고된 토큰으로 다시 계산합니다. 시간 만료 등으로 이미 전송한 요청의 사용량을 받지 못하면 예약액을 유지합니다. 비용은 설정 단가 기준 추정치입니다. `RAG_AGENT_MODEL`을 바꿀 때는 백만 토큰당 입력·출력 단가를 함께 지정합니다. 비용·시간·토큰 한도에 도달하면 `trace.stop_reason`에 원인이 기록됩니다. [환경 설정 예시](.env.example)
+
+### 6. 평가와 테스트
 
 ```bash
 uv run enterprise-agent evaluate --questions EnterpriseRAG-Bench/questions.jsonl --limit 500 --dataset-version d36685e273713975ee20299bbf1ab64165575b3c --chunk-depth 50 --candidates 50 --rrf-constant 60 --output experiments/results/phase2-sample180.json
 uv run --all-extras pytest -q
 ```
+
+LLM과 채팅 어댑터를 제외한 검증은 아래 명령으로 실행합니다. PostgreSQL 통합 테스트에는 pgvector가 설치된 `TEST_DATABASE_URL`을 지정합니다. Phase 4 테스트는 고정된 계획·근거 판정을 주입하고 실제 LangGraph 분기, 검색 SQL, 인용과 예산 종료를 확인합니다.
+
+```bash
+HF_HUB_OFFLINE=1 uv run --locked --all-extras pytest -q -m 'not llm'
+```
+
+Phase 4 개발 시 이 명령으로 단위·통합 테스트 73개가 통과했고 LLM 관련 7개를 제외했습니다. 실제 OpenAI 호출은 0건입니다.
 
 위 데이터 버전은 검증에 사용한 벤치마크 커밋입니다. 다른 버전에서는 자신의 체크아웃이나 배포 식별자를 지정합니다. 평가기는 세 검색기를 같은 읽기 전용 DB 스냅샷에서 실행합니다. 선택한 모델이 모든 청크를 인덱싱했는지 확인하고, 코퍼스·질문 파일 해시, 청크 설정, 모델 리비전, 후보 수, 질문별 검색 순위·점수·소요 시간을 JSON에 저장합니다. 질문 원문만 검색기에 전달합니다.
 
@@ -274,7 +311,7 @@ Phase 3에서는 같은 표본 DB와 로컬 생성 모델로 CLI 및 HTTP 요청
 | **C0** | PostgreSQL FTS (`ts_rank_cd`) | Off | 어휘 기반 Baseline |
 | **C1** | Dense Vector | Off | 의미 검색 Baseline |
 | **C2** | Hybrid (RRF) | Off | 강한 Non-agentic Baseline |
-| **C3** | Hybrid 기반 Agentic Retrieval (Phase 4 예정) | On | Agentic Retrieval 추가 효과 측정 |
+| **C3** | LangGraph Agentic Retrieval (`--method agentic`) | On | 하위 질문 분해와 재검색의 추가 효과 측정 |
 
 모든 조건은 가능한 한 동일한 corpus snapshot, 인덱싱 정책, 응답 생성 모델, 평가 입력을 사용합니다. **C2와 C3의 차이**로 추가 Query Planning / Adaptive Retrieval의 효과를 분석합니다.
 
@@ -303,7 +340,7 @@ Phase 3에서는 같은 표본 DB와 로컬 생성 모델로 CLI 및 HTTP 요청
 
 ## Implementation Roadmap
 
-**Phase 1~3 완료** · 표본 DB에서 수집·검색·출처 기반 답변의 종료 기준을 검증했습니다. 다음 단계는 Phase 4의 다단계 검색입니다.
+**Phase 1~4 구현** · Phase 1~3은 표본 DB에서 검증했습니다. Phase 4는 LLM 호출을 제외하고 검색 분기, 재시도, 예산, 권한과 인용을 검증했습니다. 실제 모델을 사용한 C2·C3 품질·비용 비교는 Phase 5에 포함됩니다.
 
 ### Phase 1 — Dataset Ingestion & Foundation
 
@@ -337,11 +374,11 @@ Phase 3에서는 같은 표본 DB와 로컬 생성 모델로 CLI 및 HTTP 요청
 
 ### Phase 4 — Agentic Retrieval with LangGraph
 
-- [ ] 단순/복합 질문 분기 및 Query Planning
-- [ ] Multi-step Query Decomposition 및 Search Tool Routing
-- [ ] 근거 부족 시 Query Reformulation & Retry
-- [ ] 최대 재시도·비용·실행 시간 한도 설정
-- [ ] State, 실행 트레이스, 실패 원인 및 도구 호출 로그 기록
+- [x] 단순/복합 질문 분기 및 Query Planning
+- [x] Multi-step Query Decomposition 및 Search Tool Routing
+- [x] 근거 부족 시 Query Reformulation & Retry
+- [x] 최대 재시도·비용·실행 시간 한도 설정
+- [x] State, 실행 트레이스, 실패 원인 및 도구 호출 로그 기록
 
 **Exit criteria:** 복잡한 질문에서 필요할 때만 추가 검색을 수행하며 종료 조건과 실행 기록이 명확한 Agentic RAG.
 
