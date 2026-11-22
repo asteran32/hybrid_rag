@@ -66,3 +66,16 @@ class SearchHit(EvidenceChunk):
     score: float
     rank: PositiveInt
     component_ranks: dict[str, int]
+
+
+class PageIndexHit(SearchHit):
+    matched_spans: list[tuple[int, int]] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def within_chunk(self) -> Self:
+        if any(
+            not self.start_offset <= a < b <= self.end_offset
+            for a, b in self.matched_spans
+        ):
+            raise ValueError("matched spans must be inside the source chunk")
+        return self

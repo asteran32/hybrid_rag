@@ -71,6 +71,14 @@ class HybridRetriever:
 def build_retriever(
     store: SearchStore, method: str, *, candidates: int, constant: int
 ) -> Retriever:
+    if method == "pageindex":
+        from enterprise_agent.retrieval.pageindex import PageIndexRetriever
+        from enterprise_agent.retrieval.pageindex_selector import SelectorSettings
+        from enterprise_agent.storage.pageindex import PageIndexStore
+
+        return PageIndexRetriever(
+            PageIndexStore(store.db), SelectorSettings.configured()
+        )
     if method == "keyword":
         return KeywordRetriever(store)
     if method not in {"dense", "hybrid"}:

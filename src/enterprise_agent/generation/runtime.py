@@ -12,14 +12,18 @@ from enterprise_agent.storage.search import SearchStore
 from enterprise_agent.validation.entailment import classify_local
 
 
-def run_answer(db: Connection, request: AnswerRequest) -> GroundedAnswer:
+def configured_scope() -> AnswerScope:
     raw_scope = os.getenv("ANSWER_ACCESS_SCOPE") or '{"source_types":[]}'
     try:
-        scope = AnswerScope.model_validate_json(raw_scope)
+        return AnswerScope.model_validate_json(raw_scope)
     except ValidationError:
         raise ValueError(
             "ANSWER_ACCESS_SCOPE must specify a valid source and optional document allowlist"
         ) from None
+
+
+def run_answer(db: Connection, request: AnswerRequest) -> GroundedAnswer:
+    scope = configured_scope()
     if (
         not scope.source_types
         or scope.document_ids == ()

@@ -9,7 +9,8 @@ from psycopg.types.json import Jsonb
 
 from enterprise_agent.ingestion.normalize import normalize_with_sections
 from enterprise_agent.ingestion.pageindex import INDEX_VERSION, build_tree
-from enterprise_agent.models import Document
+from enterprise_agent.models import Document, SearchFilter
+from enterprise_agent.storage.search import PROJECTION, _filters
 
 
 def _source_file(root: Path, doc: Document) -> Path:
@@ -119,3 +120,70 @@ def build_pageindex(
                 logging.getLogger(__name__).error("%s: %s", doc.document_id, exc)
                 stats["errors"] += 1
     return stats
+
+
+class PageIndexStore:
+    def __init__(self, db: Connection):
+        self.db = db
+
+    @staticmethod
+    def _scope(filters: SearchFilter) -> tuple[str, list]:
+        if filters.scope is None:
+            raise ValueError("PageIndex requires an explicit read scope")
+        where, params = _filters(filters)
+        return "p.index_version=%s AND p.fingerprint=d.fingerprint" + where, [
+            INDEX_VERSION,
+            *params,
+        ]
+
+    def catalog(self, filters: SearchFilter) -> list[dict]:
+        where, params = self._scope(filters)
+        return self.db.execute(
+            f"""
+            SELECT d.document_id, d.fingerprint, d.title, d.source_type, left(d.content,120) AS preview
+            FROM documents d JOIN pageindex_documents p USING(document_id)
+            WHERE {where} AND p.nodes <> '[]'::jsonb ORDER BY d.document_id
+            """,
+            params,
+        ).fetchall()
+
+    def outlines(self, docs: dict[str, str], filters: SearchFilter) -> dict[str, list]:
+        where, params = self._scope(filters)
+        rows = self.db.execute(
+            f"""
+            SELECT d.document_id, p.nodes FROM documents d JOIN pageindex_documents p USING(document_id)
+            JOIN unnest(%s::text[], %s::text[]) v(id, fp)
+              ON v.id=d.document_id AND v.fp=d.fingerprint
+            WHERE {where}
+            """,
+            [list(docs), list(docs.values()), *params],
+        )
+        return {r["document_id"]: r["nodes"] for r in rows}
+
+    def read_spans(
+        self,
+        spans: list[tuple[str, str, int, int]],
+        filters: SearchFilter,
+        *,
+        chunks: bool = False,
+    ) -> list[dict]:
+        if not spans:
+            return []
+        where, params = self._scope(filters)
+        projection = """v.id AS document_id, v.a, v.b,
+                        substring(d.content FROM v.a+1 FOR v.b-v.a) AS content"""
+        join = ""
+        if chunks:
+            projection = "DISTINCT " + PROJECTION
+            join = """JOIN chunks c ON c.document_id=d.document_id
+                      AND c.start_offset < v.b AND c.end_offset > v.a
+                      AND c.content=substring(d.content FROM c.start_offset+1 FOR c.end_offset-c.start_offset)"""
+        return self.db.execute(
+            f"""
+            SELECT {projection} FROM documents d JOIN pageindex_documents p USING(document_id)
+            JOIN unnest(%s::text[],%s::text[],%s::int[],%s::int[]) v(id,fp,a,b)
+              ON v.id=d.document_id AND v.fp=d.fingerprint
+            {join} WHERE {where} AND v.a >= 0 AND v.b <= char_length(d.content) AND v.a < v.b
+            """,
+            [*[list(col) for col in zip(*spans, strict=True)], *params],
+        ).fetchall()

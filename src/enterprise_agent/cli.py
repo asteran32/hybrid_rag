@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from enterprise_agent.embeddings import configured_embedder
 from enterprise_agent.generation.chat import GenerationUnavailable
 from enterprise_agent.generation.contracts import AnswerRequest
-from enterprise_agent.generation.runtime import run_answer
+from enterprise_agent.generation.runtime import configured_scope, run_answer
 from enterprise_agent.ingestion.loader import SOURCES, load_documents
 from enterprise_agent.ingestion.pipeline import ingest
 from enterprise_agent.models import ChunkSettings, SearchFilter
@@ -66,7 +66,11 @@ def parser() -> argparse.ArgumentParser:
     for command, method, top_k in ((search, "keyword", 10), (answer, "hybrid", 5)):
         command.add_argument("query")
         command.add_argument(
-            "--method", choices=("keyword", "dense", "hybrid"), default=method
+            "--method",
+            choices=("keyword", "dense", "hybrid", "pageindex")
+            if command is search
+            else ("keyword", "dense", "hybrid"),
+            default=method,
         )
         command.add_argument("--top-k", type=positive, default=top_k)
         command.add_argument("--source-type", choices=SOURCES)
@@ -162,7 +166,9 @@ def run_evaluation(db: psycopg.Connection, args: argparse.Namespace) -> None:
 
 def search(db: psycopg.Connection, args: argparse.Namespace) -> None:
     filters = SearchFilter(
-        source_type=args.source_type, metadata=json.loads(args.metadata)
+        source_type=args.source_type,
+        metadata=json.loads(args.metadata),
+        scope=configured_scope() if args.method == "pageindex" else None,
     )
     retriever = build_retriever(
         SearchStore(db),
