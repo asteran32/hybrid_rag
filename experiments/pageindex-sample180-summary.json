@@ -1,0 +1,497 @@
+{
+  "created_at": "2026-11-22T08:11:19.262515+00:00",
+  "configuration": {
+    "dataset_version": "d36685e273713975ee20299bbf1ab64165575b3c",
+    "snapshot": {
+      "sha256": "8d8280874bc9b164b20acbd423b3a0d27a379818e9191c8afda2395601e7a7b3",
+      "chunks": 1248,
+      "indexed_chunks": 1248,
+      "by_source": {
+        "confluence": 20,
+        "fireflies": 20,
+        "github": 20,
+        "gmail": 20,
+        "google_drive": 20,
+        "hubspot": 20,
+        "jira": 20,
+        "linear": 20,
+        "slack": 20
+      },
+      "chunking": [
+        {
+          "chunk_size": 1200,
+          "chunk_overlap": 160,
+          "documents": 180
+        }
+      ],
+      "pageindex": {
+        "documents": 180,
+        "nodes": 2026,
+        "stored_tree_bytes": 311013,
+        "source_modes": {
+          "fields": 180
+        },
+        "version": "markdown-v1/add6b17cebff528612748ede3fed565b5f726c6b",
+        "sha256": "562c623d0e79c72b4422ea545ca4b5f8bb0072a80150247b5469f0b55ac3a3c9"
+      }
+    },
+    "embedding": {
+      "provider": "model2vec",
+      "model": "minishlab/potion-base-8M",
+      "dimensions": 256,
+      "revision": "bf8b056651a2c21b8d2565580b8569da283cab23"
+    },
+    "questions_file": "questions.jsonl",
+    "questions_sha256": "f9524b9157cd43aae36b99333a124738804306ea6d07f332d49faa6d3d147905",
+    "question_limit": 500,
+    "question_count": 500,
+    "chunk_depth": 50,
+    "rrf_constant": 60,
+    "hybrid_candidate_depth": 50,
+    "methods": {
+      "C0": "english FTS, OR, ts_rank_cd",
+      "C1": "exact cosine",
+      "C2": "RRF(C0,C1)",
+      "PI": "local LLM over Markdown document trees"
+    },
+    "questions_with_any_gold_in_corpus": 24,
+    "gold_document_ids_in_corpus": 23,
+    "distinct_gold_document_ids": 722,
+    "pageindex": {
+      "model": "local-model",
+      "context_tokens": 8192,
+      "output_tokens": 384,
+      "max_calls": 32,
+      "candidates": 20,
+      "document_batch_size": 20,
+      "timeout_seconds": 120,
+      "model_revision": "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e",
+      "tokenizer_sha256": "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539",
+      "prompt_version": "pageindex-select-v2.1",
+      "provider": "local"
+    }
+  },
+  "results": {
+    "C0": {
+      "recall@1": 0.029787234042553193,
+      "recall@5": 0.03404255319148936,
+      "recall@10": 0.03856382978723404,
+      "mrr": 0.034548371250498915,
+      "evaluated_questions": 470,
+      "no_gold_questions": 30,
+      "hits_at_10": 20,
+      "p50_latency_ms": 18.216374999610707,
+      "p95_latency_ms": 37.1455000131391,
+      "mean_latency_ms": 19.87277215803624,
+      "mean_retrieved_documents": 13.492,
+      "with_gold_in_corpus": {
+        "recall@1": 0.5833333333333334,
+        "recall@5": 0.6666666666666666,
+        "recall@10": 0.7552083333333334,
+        "mrr": 0.6765722703222704,
+        "questions": 24,
+        "hits_at_10": 20
+      }
+    },
+    "C1": {
+      "recall@1": 0.022340425531914895,
+      "recall@5": 0.035106382978723406,
+      "recall@10": 0.04175531914893617,
+      "mrr": 0.03020414583129065,
+      "evaluated_questions": 470,
+      "no_gold_questions": 30,
+      "hits_at_10": 22,
+      "p50_latency_ms": 6.3447499996982515,
+      "p95_latency_ms": 8.980124999652617,
+      "mean_latency_ms": 6.242863421764923,
+      "mean_retrieved_documents": 29.76,
+      "with_gold_in_corpus": {
+        "recall@1": 0.4375,
+        "recall@5": 0.6875,
+        "recall@10": 0.8177083333333334,
+        "mrr": 0.5914978558627751,
+        "questions": 24,
+        "hits_at_10": 22
+      }
+    },
+    "C2": {
+      "recall@1": 0.03404255319148936,
+      "recall@5": 0.04069148936170213,
+      "recall@10": 0.04175531914893617,
+      "mrr": 0.03938167521655033,
+      "evaluated_questions": 470,
+      "no_gold_questions": 30,
+      "hits_at_10": 22,
+      "p50_latency_ms": 19.40887499949895,
+      "p95_latency_ms": 41.84591700322926,
+      "mean_latency_ms": 21.344104688585503,
+      "mean_retrieved_documents": 23.484,
+      "with_gold_in_corpus": {
+        "recall@1": 0.6666666666666666,
+        "recall@5": 0.796875,
+        "recall@10": 0.8177083333333334,
+        "mrr": 0.7712244729907773,
+        "questions": 24,
+        "hits_at_10": 22
+      }
+    },
+    "PI": {
+      "recall@1": 0.00425531914893617,
+      "recall@5": 0.00425531914893617,
+      "recall@10": 0.00425531914893617,
+      "mrr": 0.00425531914893617,
+      "evaluated_questions": 470,
+      "no_gold_questions": 30,
+      "hits_at_10": 2,
+      "p50_latency_ms": 21819.816875009565,
+      "p95_latency_ms": 57452.23520800937,
+      "mean_latency_ms": 26933.748520562134,
+      "mean_retrieved_documents": 0.802,
+      "with_gold_in_corpus": {
+        "recall@1": 0.08333333333333333,
+        "recall@5": 0.08333333333333333,
+        "recall@10": 0.08333333333333333,
+        "mrr": 0.08333333333333333,
+        "questions": 24,
+        "hits_at_10": 2
+      },
+      "candidate_metrics": {
+        "recall@1": 0.002127659574468085,
+        "recall@5": 0.006382978723404255,
+        "recall@10": 0.006382978723404255,
+        "mrr": 0.00425531914893617
+      },
+      "navigation": {
+        "calls": 6119,
+        "retries": 36,
+        "input_tokens": 5833388,
+        "output_tokens": 370687,
+        "missing_usage": 0,
+        "stop_reasons": {
+          "complete": 494,
+          "invalid_selection": 2,
+          "model_error": 4
+        },
+        "errors": 4
+      }
+    }
+  },
+  "audit": {
+    "baseline_query_rankings_matched": 1500,
+    "pageindex_queries": 500,
+    "verified_selected_node_visits": 4811,
+    "verified_evidence_spans": 1396,
+    "questions_with_gold_in_sample": 24,
+    "candidate_any_gold": 3,
+    "final_top10_any_gold": 2,
+    "empty_pi_results": 129,
+    "selected_documents": 1369,
+    "sample_recall_ceiling": {
+      "1": 0.04601063829787234,
+      "5": 0.04601063829787234,
+      "10": 0.04601063829787234
+    },
+    "stage_calls": {
+      "document": 5002,
+      "node": 589,
+      "evidence": 528
+    },
+    "provider_errors": {
+      "local selector failed (TimeoutError)": 4
+    },
+    "candidate_hits": {
+      "1": 1,
+      "5": 3,
+      "10": 3,
+      "20": 3
+    },
+    "final_document_hits": {
+      "C0": {
+        "1": 15,
+        "5": 17,
+        "10": 20
+      },
+      "C1": {
+        "1": 11,
+        "5": 18,
+        "10": 22
+      },
+      "C2": {
+        "1": 17,
+        "5": 21,
+        "10": 22
+      },
+      "PI": {
+        "1": 2,
+        "5": 2,
+        "10": 2
+      }
+    }
+  },
+  "example_qst_0004": {
+    "question_id": "qst_0004",
+    "document_id": "dsid_6c4c1c875e704f09b4d791d64d7bc7e5",
+    "phrase_offsets": [
+      6332,
+      6393
+    ],
+    "methods": {
+      "C0": {
+        "document_rank": 1,
+        "first_chunk_depth_covering_phrase": 10
+      },
+      "C1": {
+        "document_rank": 3,
+        "first_chunk_depth_covering_phrase": 17
+      },
+      "C2": {
+        "document_rank": 1,
+        "first_chunk_depth_covering_phrase": 11
+      },
+      "PI": {
+        "document_rank": null,
+        "first_chunk_depth_covering_phrase": null,
+        "candidate_document_rank": null,
+        "stop_reason": "complete"
+      }
+    }
+  },
+  "development": {
+    "C2": [
+      {
+        "question_id": "dev_drawer",
+        "document_ids": [
+          "dsid_1d5c022db7ef4708a7178bc291921770",
+          "dsid_7e9424d7d7ad4decb22530f773d8cd76",
+          "dsid_a9d76bcb3bc1475abc9d6f8f83a6eba8",
+          "dsid_3c9fe2220c204f13b878bd7d3a168f91",
+          "dsid_3353e1dfb1eb4ba3a10df85d16ea9191",
+          "dsid_2ffb84ee56464340885a9e484cfc6f5d",
+          "dsid_166f396941744872b8cafe05ff5ecd5b",
+          "dsid_f608b4d739f240c0b56d4d4b151b8cd3",
+          "dsid_15128022da5846eb83b084f0a9cd5d9a",
+          "dsid_1e526dcc22474f50936fdafe9a98829a",
+          "dsid_931d3d5385c64dd18aee76e4e4c5fccc",
+          "dsid_71ac1ab597814a3998770372256f3254",
+          "dsid_6a4c49a2b8834dc88e3999b50a07af88",
+          "dsid_4d0e24bff75b428294d4fd4f5852fe55",
+          "dsid_862bb899faac43feab4f92a12d320e7c",
+          "dsid_a94ba3c00ddc4c07bf685acd129b10ba",
+          "dsid_c7f2177f9b52432a9e7154afd1155824",
+          "dsid_b62e702165644db2ab5af426734c5233",
+          "dsid_29cd5c7c03634a9ea5fbe961534fca0b",
+          "dsid_d7ecdde1908941da80c67bb1fdcadef1",
+          "dsid_c3be99dbca144db488c037dd2f0831ef",
+          "dsid_5d6b7de2a9b7456e951649a82c6d861f"
+        ],
+        "span_metrics": {
+          "span_recall@1": 1.0,
+          "span_recall@5": 1.0,
+          "span_recall@10": 1.0
+        }
+      },
+      {
+        "question_id": "dev_price_lock",
+        "document_ids": [
+          "dsid_02892bbb04c94f5bbeaf5f0068ba47d8",
+          "dsid_19168cfe7bf44180b892eaf61995fb4d",
+          "dsid_8f5e77a928c341bcac932a320fd9595a",
+          "dsid_fc36d1d60e7e4b4abc7db84629563b7a",
+          "dsid_d1c7df6f78374265a090d3e525fe4e10",
+          "dsid_a94ba3c00ddc4c07bf685acd129b10ba",
+          "dsid_6c4c1c875e704f09b4d791d64d7bc7e5",
+          "dsid_d2828ab0846e446bb8b3388e2c4c75a9",
+          "dsid_ade422e17bc24b65a7f523eddd313cfb",
+          "dsid_1ce414e082d44ca5bb3633fe01455068",
+          "dsid_2b094791581b4d7d9b3d8a754863bc54",
+          "dsid_50a4b1f84e9c4174869135fc11d35144",
+          "dsid_2ffb84ee56464340885a9e484cfc6f5d",
+          "dsid_e22d435a2d9e4fae8ef1c0f83c6f487d",
+          "dsid_e74521446b8745d596d7787dc31ed09b",
+          "dsid_ab2c13d473854388a7bcf9c4057f4808",
+          "dsid_92af8c64943248f2aca24dfbef1ea77d",
+          "dsid_0552f586ae9442709f3e403f5b148c8c",
+          "dsid_e4f5e501290c4fa7b1729064c01d3786",
+          "dsid_207184bb522446f7b7307262d56b6940",
+          "dsid_f7aea6b428504471bb05e16aaba6709b",
+          "dsid_8037b6194f5247918c54f3906f93a873",
+          "dsid_9d01988fd5114945bb6165b929833160",
+          "dsid_0767a662eacd463aaf0935750dba509e",
+          "dsid_465b02b1693b43cf88e20dc3eb047687"
+        ],
+        "span_metrics": {
+          "span_recall@1": 1.0,
+          "span_recall@5": 1.0,
+          "span_recall@10": 1.0
+        }
+      },
+      {
+        "question_id": "example_gcp",
+        "document_ids": [
+          "dsid_7d9551aa21124d70b0e247c390d88622",
+          "dsid_6c4c1c875e704f09b4d791d64d7bc7e5",
+          "dsid_3c9fe2220c204f13b878bd7d3a168f91",
+          "dsid_862bb899faac43feab4f92a12d320e7c",
+          "dsid_bf86cdfd170b465f811cb2fe5e9e7650",
+          "dsid_fd059d453d6c40ef844a745c5f773493",
+          "dsid_e4f5e501290c4fa7b1729064c01d3786",
+          "dsid_3a1f6951df694270beffed49a6a3cabc"
+        ],
+        "span_metrics": {
+          "span_recall@1": 0.0,
+          "span_recall@5": 1.0,
+          "span_recall@10": 1.0
+        }
+      }
+    ],
+    "PI": [
+      {
+        "question_id": "dev_drawer",
+        "document_ids": [
+          "dsid_0767a662eacd463aaf0935750dba509e"
+        ],
+        "span_metrics": {
+          "span_recall@1": 0.0,
+          "span_recall@5": 0.0,
+          "span_recall@10": 0.0
+        }
+      },
+      {
+        "question_id": "dev_price_lock",
+        "document_ids": [
+          "dsid_02892bbb04c94f5bbeaf5f0068ba47d8"
+        ],
+        "span_metrics": {
+          "span_recall@1": 0.0,
+          "span_recall@5": 0.0,
+          "span_recall@10": 0.0
+        }
+      },
+      {
+        "question_id": "example_gcp",
+        "document_ids": [
+          "dsid_802b8c0343c746469052e7f2f58404c8"
+        ],
+        "span_metrics": {
+          "span_recall@1": 0.0,
+          "span_recall@5": 0.0,
+          "span_recall@10": 0.0
+        }
+      }
+    ]
+  },
+  "index_audit": {
+    "documents": 180,
+    "nodes": 2026,
+    "nonempty_node_spans": 1645,
+    "cli_citation": {
+      "document_id": "dsid_1d5c022db7ef4708a7178bc291921770",
+      "start_offset": 1010,
+      "end_offset": 1120,
+      "quote": "Keep the companion as a persistent right-side drawer on Alerts and SLO pages (not modal) to reduce disruption."
+    },
+    "fresh": {
+      "elapsed_ms": 220.52,
+      "written": 180,
+      "unchanged": 0,
+      "empty": 0,
+      "errors": 0
+    },
+    "repeat": {
+      "elapsed_ms": 7.08,
+      "written": 0,
+      "unchanged": 180,
+      "empty": 0,
+      "errors": 0
+    }
+  },
+  "entrypoints_and_repeat": {
+    "development_repeat": [
+      {
+        "question_id": "dev_drawer",
+        "same_final_documents": true,
+        "same_ranked_chunks_and_spans": true,
+        "same_candidates": true,
+        "same_nodes": true
+      },
+      {
+        "question_id": "dev_price_lock",
+        "same_final_documents": true,
+        "same_ranked_chunks_and_spans": true,
+        "same_candidates": true,
+        "same_nodes": true
+      },
+      {
+        "question_id": "example_gcp",
+        "same_final_documents": true,
+        "same_ranked_chunks_and_spans": true,
+        "same_candidates": true,
+        "same_nodes": true
+      }
+    ],
+    "pageindex_cli_linear": {
+      "status": "partial",
+      "answer": "[inference] The shift-change companion drawer is on Alerts and SLO pages.",
+      "verified_citations": [
+        {
+          "document_id": "dsid_1d5c022db7ef4708a7178bc291921770",
+          "start": 1010,
+          "end": 1120,
+          "quote": "Keep the companion as a persistent right-side drawer on Alerts and SLO pages (not modal) to reduce disruption."
+        }
+      ]
+    },
+    "pageindex_api_linear": {
+      "status": "partial",
+      "answer": "[inference] The shift-change companion drawer is on Alerts and SLO pages.",
+      "verified_citations": [
+        {
+          "document_id": "dsid_1d5c022db7ef4708a7178bc291921770",
+          "start": 1010,
+          "end": 1120,
+          "quote": "Keep the companion as a persistent right-side drawer on Alerts and SLO pages (not modal) to reduce disruption."
+        }
+      ]
+    },
+    "hybrid_api_linear": {
+      "status": "partial",
+      "answer": "The shift-change companion drawer is on the Alerts and SLO pages.",
+      "verified_citations": [
+        {
+          "document_id": "dsid_1d5c022db7ef4708a7178bc291921770",
+          "start": 166,
+          "end": 673,
+          "quote": "The surface is a compact, persistent drawer available on the Alerts and SLO pages that surfaces current active alerts, SLO deviation snapshot, recommended next steps, and one-click actions: transfer ownership, create a postmortem stub, append quick notes, and send a templated status update.\n\nScope: prototype designs for desktop, high-fidelity Figma frames for interaction, microcopy for templates, accessibility pass (keyboard + screen reader), and a short usability script for a 5-person usability round."
+        }
+      ]
+    },
+    "denied_api_scope": "abstained"
+  },
+  "raw_report_sha256": "dc7aec11c34be6501a960c944c98d57ee3e0d869a6db2b580132758f76694615",
+  "timeout_replay": [
+    {
+      "question_id": "qst_0307",
+      "stop_reason": "complete",
+      "calls": 16,
+      "error": null
+    },
+    {
+      "question_id": "qst_0356",
+      "stop_reason": "model_error",
+      "calls": 13,
+      "error": "local selector failed (TimeoutError)"
+    },
+    {
+      "question_id": "qst_0364",
+      "stop_reason": "complete",
+      "calls": 13,
+      "error": null
+    },
+    {
+      "question_id": "qst_0490",
+      "stop_reason": "model_error",
+      "calls": 16,
+      "error": "local selector failed (TimeoutError)"
+    }
+  ]
+}
