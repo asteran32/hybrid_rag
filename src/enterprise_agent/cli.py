@@ -50,7 +50,12 @@ def parser() -> argparse.ArgumentParser:
     load.add_argument("--lexical-index", action="store_true")
     index = commands.add_parser("build-index")
     index.add_argument(
-        "--kind", choices=("keyword", "dense", "both"), default="keyword"
+        "--kind", choices=("keyword", "dense", "both", "pageindex"), default="keyword"
+    )
+    index.add_argument(
+        "--input",
+        type=Path,
+        help="optional source directory for PageIndex field boundaries",
     )
     index.add_argument("--max-chunks", type=positive, default=100)
     index.add_argument("--batch-size", type=positive, default=32)
@@ -191,6 +196,12 @@ def main() -> int:
                 print(stats.model_dump_json())
                 return int(stats.errors > 0)
             elif args.command == "build-index":
+                if args.kind == "pageindex":
+                    from enterprise_agent.storage.pageindex import build_pageindex
+
+                    result = build_pageindex(db, args.input, args.batch_size)
+                    print(json.dumps(result))
+                    return int(result["errors"] > 0)
                 if args.kind in ("keyword", "both"):
                     build_lexical_index(db)
                 if args.kind in ("dense", "both"):

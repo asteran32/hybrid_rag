@@ -29,3 +29,10 @@ CREATE TABLE IF NOT EXISTS chunk_embeddings (
     PRIMARY KEY (model_key, chunk_id)
 );
 CREATE INDEX IF NOT EXISTS embeddings_chunk_idx ON chunk_embeddings(chunk_id);
+CREATE TABLE IF NOT EXISTS pageindex_documents (
+    document_id text PRIMARY KEY REFERENCES documents ON DELETE CASCADE,
+    fingerprint text NOT NULL,
+    index_version text NOT NULL,
+    source_mode text NOT NULL CHECK (source_mode IN ('fields', 'content')),
+    nodes jsonb NOT NULL CHECK (jsonb_typeof(nodes) = 'array')
+);
