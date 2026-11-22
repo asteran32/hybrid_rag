@@ -2,6 +2,7 @@ import argparse
 import json
 import logging
 import sys
+from contextlib import redirect_stdout
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -187,8 +188,12 @@ def run_evaluation(db: psycopg.Connection, args: argparse.Namespace) -> int:
         "distinct_gold_document_ids": len(gold),
     }
     if "pageindex" in selected:
+        settings = SelectorSettings.configured()
         config["pageindex"] = {
-            **SelectorSettings.configured().model_dump(exclude={"base_url"}),
+            **settings.model_dump(exclude={"base_url", "tokenizer_path"}),
+            "tokenizer_sha256": question_file_sha256(settings.tokenizer_path)
+            if settings.tokenizer_path
+            else None,
             "prompt_version": PROMPT_VERSION,
             "provider": "local",
         }
@@ -254,7 +259,9 @@ def main() -> int:
                 if args.kind == "pageindex":
                     from enterprise_agent.storage.pageindex import build_pageindex
 
-                    result = build_pageindex(db, args.input, args.batch_size)
+                    # Upstream prints progress. Reserve CLI stdout for the JSON result.
+                    with redirect_stdout(sys.stderr):
+                        result = build_pageindex(db, args.input, args.batch_size)
                     print(json.dumps(result))
                     return int(result["errors"] > 0)
                 if args.kind in ("keyword", "both"):

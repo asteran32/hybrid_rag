@@ -15,7 +15,7 @@ answer = ["openai>=1.55,<3", "onnxruntime>=1.20,<2", "numpy>=1.26,<3", "tokenize
 api = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1"]
 openai = ["openai>=1.55,<3"]
 parquet = ["pyarrow>=18"]
-pageindex = ["pageindex"]
+pageindex = ["pageindex==0.2.10"]
 
 [tool.uv.sources]
 pageindex = { git = "https://github.com/VectifyAI/PageIndex.git", rev = "add6b17cebff528612748ede3fed565b5f726c6b" }

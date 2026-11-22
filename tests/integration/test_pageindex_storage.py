@@ -1,13 +1,46 @@
 import json
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 
 import pytest
+from psycopg import sql
 
 from enterprise_agent.ingestion.normalize import normalize
 from enterprise_agent.ingestion.pipeline import ingest
 from enterprise_agent.models import ChunkSettings
 from enterprise_agent.storage import pageindex
+from enterprise_agent.storage.db import connect
 
 pytestmark = pytest.mark.integration
+
+
+def test_concurrent_builders_publish_one_tree(db, documents, monkeypatch):
+    pytest.importorskip("pageindex")
+    ingest(db, documents[:1], ChunkSettings(), limit=None, batch_size=1)
+    schema = sql.Identifier(
+        db.execute("SELECT current_schema() AS name").fetchone()["name"]
+    )
+    dsn = db.info.dsn
+    barrier = Barrier(2)
+    build = pageindex.build_tree
+
+    def synchronized(*args):
+        barrier.wait(timeout=10)
+        return build(*args)
+
+    def worker():
+        with connect(dsn) as other:
+            other.execute(sql.SQL("SET search_path TO {},public").format(schema))
+            return pageindex.build_pageindex(other)
+
+    monkeypatch.setattr(pageindex, "build_tree", synchronized)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        workers = [pool.submit(worker) for _ in range(2)]
+        stats = [task.result() for task in workers]
+    assert sorted((s["written"], s["unchanged"], s["errors"]) for s in stats) == [
+        (0, 1, 0),
+        (1, 0, 0),
+    ]
 
 
 def test_rebuild_skips_current_trees_and_recovers_field_spans(db, tmp_path):

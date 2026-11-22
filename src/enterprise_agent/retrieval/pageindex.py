@@ -109,7 +109,7 @@ class PageIndexRetriever:
         options = [
             (
                 doc,
-                f"{r['source_type']} | {excerpt(r['title'] or '', 110)} | {excerpt(r['preview'], 110)}",
+                f"{excerpt(r['title'] or r['source_type'], 110)} | {r['source_type']} {excerpt(r['preview'], 64)}",
             )
             for doc, r in catalog.items()
         ]
@@ -143,7 +143,7 @@ class PageIndexRetriever:
                 else:
                     for child in nested:
                         n = records[child][1]
-                        label = f"{catalog[doc]['title'] or catalog[doc]['source_type']} / {node['title']} / {n['title']} | {n['preview']}"
+                        label = f"{n['title']} | {catalog[doc]['title'] or catalog[doc]['source_type']} / {node['title']} / {n['preview']}"
                         options.append((child, label))
             frontier = auto + (
                 nav.choose("node", options, self.settings.candidates) if options else []
@@ -159,7 +159,7 @@ class PageIndexRetriever:
                 options.append(
                     (
                         str(len(passages)),
-                        f"{catalog[doc]['title'] or catalog[doc]['source_type']} | {text[left - a : right - a]}",
+                        f"{text[left - a : right - a]} | {catalog[doc]['title'] or catalog[doc]['source_type']}",
                     )
                 )
                 passages.append((doc, fp, left, right))

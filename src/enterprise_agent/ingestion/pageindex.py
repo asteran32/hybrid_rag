@@ -1,9 +1,7 @@
 """Project normalized text into Markdown, then attach PageIndex nodes to source spans."""
 
 import asyncio
-import contextlib
 import re
-import sys
 from collections.abc import Iterator
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -104,9 +102,7 @@ def build_tree(
     with TemporaryDirectory(prefix="enterprise-pageindex-") as tmp:
         path = Path(tmp) / "document.md"
         path.write_text("\n".join(lines), encoding="utf-8")
-        # Upstream prints progress. The CLI reserves stdout for its JSON result.
-        with contextlib.redirect_stdout(sys.stderr):
-            result = asyncio.run(md_to_tree(str(path), if_add_node_id="yes"))
+        result = asyncio.run(md_to_tree(str(path), if_add_node_id="yes"))
 
     nodes = []
 
