@@ -28,7 +28,9 @@ def test_unknown_duplicate_and_boolean_ids_do_not_escape_batch():
     assert (nav.trace.retries, nav.trace.calls, nav.trace.input_tokens) == (1, 2, 4)
     assert nav.choose("node", options, 2) == []
     assert nav.trace.stop_reason == "budget_exhausted"
-    nav = Navigation(Script([[1, 1], [3]]), SelectorSettings(), "q")
+    nav = Navigation(Script([[1, 1]]), SelectorSettings(), "q")
+    assert nav.choose("document", options, 2) == ["left"]
+    nav = Navigation(Script([[3], [3]]), SelectorSettings(), "q")
     assert nav.choose("document", options, 2) == []
     assert nav.trace.stop_reason == "invalid_selection"
     with pytest.raises(ValueError, match="loopback"):
@@ -42,6 +44,18 @@ def test_model_considers_each_catalog_batch_then_ranks_their_candidates():
     options = [(str(i), "description") for i in range(5)]
     assert nav.choose("document", options, 3) == ["2"]
     assert nav.trace.calls_by_stage == {"document": 4}
+
+
+def test_failed_final_ranking_preserves_independently_selected_evidence():
+    options = [("a", "story one"), ("b", "story two")]
+    nav = Navigation(
+        Script([[1], [1], None, [99]]), SelectorSettings(document_batch_size=1), "q"
+    )
+    assert nav.choose("document", options, 2) == ["a", "b"]
+    assert nav.trace.stop_reason == "invalid_selection" and nav.trace.retries == 1
+    limited = Navigation(Script([None]), SelectorSettings(max_calls=1), "q")
+    assert limited.choose("node", options, 2) == []
+    assert limited.trace.retries == 0 and limited.trace.calls == 1
 
 
 def test_different_lines_and_long_sentences_keep_original_offsets():

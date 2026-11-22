@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field
 
-PROMPT_VERSION = "pageindex-select-v2"
+PROMPT_VERSION = "pageindex-select-v2.1"
 TASKS = {
     "document": "Rank the most promising document titles and excerpts to investigate. Pick at least one best candidate, even when a title alone cannot answer the question.",
     "node": "Rank the outline sections most worth opening. Pick at least one section to inspect.",
@@ -213,15 +213,19 @@ class Navigation:
 
     def _select_batch(
         self, stage: str, batch: list[tuple[str, str]], limit: int
-    ) -> list[str]:
+    ) -> list[str] | None:
         limit = min(limit, len(batch))
+        retry = False
         while True:
             if (
                 self.trace.calls >= self.settings.max_calls
                 or monotonic() >= self.deadline
             ):
                 self.trace.stop_reason = "budget_exhausted"
-                return []
+                return None
+            if retry:
+                self.trace.retries += 1
+                limit = 1
             self.trace.calls += 1
             self.trace.calls_by_stage[stage] = (
                 self.trace.calls_by_stage.get(stage, 0) + 1
@@ -238,23 +242,23 @@ class Navigation:
                 self.trace.stop_reason = "model_error"
                 exc.trace = self.trace
                 raise
-            if reply.usage:
-                self.trace.input_tokens += reply.usage.get("prompt_tokens", 0)
-                self.trace.output_tokens += reply.usage.get("completion_tokens", 0)
-            else:
+            prompt_tokens = reply.usage.get("prompt_tokens")
+            completion_tokens = reply.usage.get("completion_tokens")
+            if prompt_tokens is None or completion_tokens is None:
                 self.trace.missing_usage += 1
+            self.trace.input_tokens += prompt_tokens or 0
+            self.trace.output_tokens += completion_tokens or 0
             ids = reply.ids
             if (
                 ids is not None
                 and len(ids) <= limit
                 and all(type(i) is int and 1 <= i <= len(batch) for i in ids)
-                and len(set(ids)) == len(ids)
             ):
-                return [batch[i - 1][0] for i in ids]
+                return [batch[i - 1][0] for i in dict.fromkeys(ids)]
             if self.trace.retries:
                 self.trace.stop_reason = "invalid_selection"
-                return []
-            self.trace.retries += 1
+                return None
+            retry = True
 
     def choose(
         self, stage: str, options: list[tuple[str, str]], limit: int
@@ -295,7 +299,7 @@ class Navigation:
             batches.append(batch)
         ranks = []
         for group in batches:
-            ranks.append(self._select_batch(stage, group, limit))
+            ranks.append(self._select_batch(stage, group, limit) or [])
             if self.trace.stop_reason == "budget_exhausted":
                 break
         # Give each batch a place in the global shortlist before the cross-batch model call.
@@ -315,5 +319,7 @@ class Navigation:
                 and self.trace.calls < self.settings.max_calls
                 and monotonic() < self.deadline
             ):
-                return self._select_batch(stage, finalists, limit)
+                ranked = self._select_batch(stage, finalists, limit)
+                if ranked is not None:
+                    return ranked
         return merged[:limit]
