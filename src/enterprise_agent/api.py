@@ -8,7 +8,11 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 
 from enterprise_agent.generation.chat import GenerationUnavailable
-from enterprise_agent.generation.contracts import AnswerRequest, GroundedAnswer
+from enterprise_agent.generation.contracts import (
+    AgenticAnswer,
+    AnswerRequest,
+    GroundedAnswer,
+)
 from enterprise_agent.generation.runtime import run_answer
 from enterprise_agent.storage.db import connect
 from enterprise_agent.validation.entailment import VerificationUnavailable
@@ -23,7 +27,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="Enterprise Knowledge Agent", lifespan=lifespan)
 
 
-@app.post("/answer", response_model=GroundedAnswer)
+@app.post("/answer", response_model=AgenticAnswer | GroundedAnswer)
 def answer(request: AnswerRequest) -> GroundedAnswer:
     try:
         with connect() as db:

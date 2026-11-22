@@ -3,8 +3,13 @@ import os
 from psycopg import Connection
 from pydantic import ValidationError
 
+from enterprise_agent.agent.runtime import run_agent
 from enterprise_agent.generation.chat import generate
-from enterprise_agent.generation.contracts import AnswerRequest, GroundedAnswer
+from enterprise_agent.generation.contracts import (
+    AgenticAnswer,
+    AnswerRequest,
+    GroundedAnswer,
+)
 from enterprise_agent.generation.service import answer_question
 from enterprise_agent.models import AnswerScope
 from enterprise_agent.retrieval.service import build_retriever
@@ -12,22 +17,25 @@ from enterprise_agent.storage.search import SearchStore
 from enterprise_agent.validation.entailment import classify_local
 
 
-def run_answer(db: Connection, request: AnswerRequest) -> GroundedAnswer:
+def configured_scope() -> AnswerScope:
     raw_scope = os.getenv("ANSWER_ACCESS_SCOPE") or '{"source_types":[]}'
     try:
-        scope = AnswerScope.model_validate_json(raw_scope)
+        return AnswerScope.model_validate_json(raw_scope)
     except ValidationError:
         raise ValueError(
             "ANSWER_ACCESS_SCOPE must specify a valid source and optional document allowlist"
         ) from None
-    if (
-        not scope.source_types
-        or scope.document_ids == ()
-        or (
-            request.source_type is not None
-            and request.source_type not in scope.source_types
+
+
+def run_answer(db: Connection, request: AnswerRequest) -> GroundedAnswer:
+    scope = configured_scope()
+    if request.method == "agentic":
+        result = run_agent(db, request, scope, want_answer=True)
+        assert result.answer is not None
+        return AgenticAnswer(
+            **result.answer.model_dump(exclude={"answer"}), trace=result.trace
         )
-    ):
+    if not scope.allows_source(request.source_type):
         return GroundedAnswer(status="abstained", limitations=["insufficient_evidence"])
     store = SearchStore(db)
     retriever = build_retriever(

@@ -4,14 +4,16 @@ import logging
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TypeVar
 
 import psycopg
 from dotenv import load_dotenv
 
+from enterprise_agent.agent.runtime import run_agent
 from enterprise_agent.embeddings import configured_embedder
 from enterprise_agent.generation.chat import GenerationUnavailable
-from enterprise_agent.generation.contracts import AnswerRequest
-from enterprise_agent.generation.runtime import run_answer
+from enterprise_agent.generation.contracts import AnswerRequest, SearchRequest
+from enterprise_agent.generation.runtime import configured_scope, run_answer
 from enterprise_agent.ingestion.loader import SOURCES, load_documents
 from enterprise_agent.ingestion.pipeline import ingest
 from enterprise_agent.models import ChunkSettings, SearchFilter
@@ -61,7 +63,9 @@ def parser() -> argparse.ArgumentParser:
     for command, method, top_k in ((search, "keyword", 10), (answer, "hybrid", 5)):
         command.add_argument("query")
         command.add_argument(
-            "--method", choices=("keyword", "dense", "hybrid"), default=method
+            "--method",
+            choices=("keyword", "dense", "hybrid", "agentic"),
+            default=method,
         )
         command.add_argument("--top-k", type=positive, default=top_k)
         command.add_argument("--source-type", choices=SOURCES)
@@ -156,6 +160,20 @@ def run_evaluation(db: psycopg.Connection, args: argparse.Namespace) -> None:
 
 
 def search(db: psycopg.Connection, args: argparse.Namespace) -> None:
+    if args.method == "agentic":
+        request = read_query(args, SearchRequest)
+        result = run_agent(db, request, configured_scope(), want_answer=False)
+        print(
+            json.dumps(
+                {
+                    "hits": [hit.model_dump(mode="json") for hit in result.hits],
+                    "trace": result.trace.model_dump(mode="json"),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return
     filters = SearchFilter(
         source_type=args.source_type, metadata=json.loads(args.metadata)
     )
@@ -167,6 +185,21 @@ def search(db: psycopg.Connection, args: argparse.Namespace) -> None:
     )
     hits = retriever.search(args.query, args.top_k, filters)
     print(json.dumps([hit.model_dump() for hit in hits], ensure_ascii=False, indent=2))
+
+
+Query = TypeVar("Query", bound=SearchRequest)
+
+
+def read_query(args: argparse.Namespace, schema: type[Query]) -> Query:
+    return schema(
+        question=args.query,
+        method=args.method,
+        top_k=args.top_k,
+        source_type=args.source_type,
+        metadata=json.loads(args.metadata),
+        candidates=args.candidates,
+        rrf_constant=args.rrf_constant,
+    )
 
 
 def main() -> int:
@@ -204,15 +237,7 @@ def main() -> int:
             elif args.command == "search":
                 search(db, args)
             elif args.command == "answer":
-                request = AnswerRequest(
-                    question=args.query,
-                    method=args.method,
-                    top_k=args.top_k,
-                    source_type=args.source_type,
-                    metadata=json.loads(args.metadata),
-                    candidates=args.candidates,
-                    rrf_constant=args.rrf_constant,
-                )
+                request = read_query(args, AnswerRequest)
                 print(run_answer(db, request).model_dump_json(indent=2))
             elif args.command == "evaluate":
                 run_evaluation(db, args)

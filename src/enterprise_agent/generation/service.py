@@ -131,10 +131,23 @@ def answer_question(
     hits = retriever.search(request.question, request.top_k, filters)[: request.top_k]
     stored = store.load_evidence([hit.chunk_id for hit in hits], filters)
     passages = select_passages(hits, stored, CONTEXT_CHARS)
+    return answer_from_passages(
+        request.question, passages, filters, store, generate, classify
+    )
+
+
+def answer_from_passages(
+    question: str,
+    passages: dict[str, Passage],
+    filters: SearchFilter,
+    store: EvidenceStore,
+    generate: Generate,
+    classify: Classifier,
+) -> GroundedAnswer:
     if not passages:
         return GroundedAnswer(status="abstained", limitations=["insufficient_evidence"])
     texts = {label: p.text for label, p in passages.items()}
-    generated = generate(request.question, texts)
+    generated = generate(question, texts)
     issues = []
     if not isinstance(generated.outcome, str):
         draft, issues = review_support(generated.outcome, passages, classify)

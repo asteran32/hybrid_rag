@@ -9,6 +9,7 @@ from pydantic import (
     computed_field,
 )
 
+from enterprise_agent.agent.contracts import AgentTrace
 from enterprise_agent.validation.citations import Citation, PassageRef
 
 ClaimKind = Literal["fact", "inference"]
@@ -22,22 +23,27 @@ Limitation = (
         "evidence_changed",
         "unsupported_claim",
         "unverified_conflict",
+        "agent_budget_exhausted",
     ]
     | GenerationIssue
 )
 
 
-class AnswerRequest(BaseModel):
+class SearchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     question: Annotated[
         str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000)
     ]
-    method: Literal["keyword", "dense", "hybrid"] = "hybrid"
-    top_k: int = Field(default=5, ge=1, le=20)
+    method: Literal["keyword", "dense", "hybrid", "agentic"] = "hybrid"
+    top_k: int = Field(default=10, ge=1, le=500)
     source_type: str | None = None
     metadata: dict[str, JsonValue] = Field(default_factory=dict)
     candidates: int = Field(default=50, ge=1, le=500)
     rrf_constant: int = Field(default=60, ge=0)
+
+
+class AnswerRequest(SearchRequest):
+    top_k: int = Field(default=5, ge=1, le=20)
 
 
 class DraftClaim(BaseModel):
@@ -99,3 +105,7 @@ class GroundedAnswer(BaseModel):
             for claim in self.claims
         ]
         return "\n".join(lines) or None
+
+
+class AgenticAnswer(GroundedAnswer):
+    trace: AgentTrace
