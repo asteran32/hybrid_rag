@@ -175,7 +175,7 @@ uv run enterprise-agent search 'quarterly forecast' --source-type gmail --metada
 
 #### PageIndex 목차 검색
 
-이 브랜치에서는 PageIndex `0.2.10`의 Markdown 파서로 문서별 목차를 생성합니다. 벤치마크 텍스트를 직접 색인하며, 로컬 LLM이 허용된 문서의 제목·발췌, 하위 목차, 원문 구간을 차례로 선택합니다. `matched_spans`는 선택한 근거의 유니코드 문자 위치입니다. 답변기는 해당 범위에서 인용을 구성합니다. [구현 계획](experiments/pageindex-implementation-plan.md) · [PageIndex 공개 소스](https://github.com/VectifyAI/PageIndex/tree/add6b17cebff528612748ede3fed565b5f726c6b)
+이 브랜치에서는 PageIndex `0.2.10`의 Markdown 파서로 문서별 목차를 생성합니다. 벤치마크 텍스트를 직접 색인하며, 로컬 LLM이 허용된 문서의 제목·발췌, 하위 목차, 원문 구간을 차례로 선택합니다. `matched_spans`는 선택한 근거의 유니코드 문자 위치입니다. 답변기는 해당 범위에서 인용을 구성합니다. [구현 계획](experiments/pageindex-implementation-plan.md) · [검증 보고서](experiments/pageindex-verification.md) · [PageIndex 공개 소스](https://github.com/VectifyAI/PageIndex/tree/add6b17cebff528612748ede3fed565b5f726c6b)
 
 ```bash
 uv run --locked --extra pageindex enterprise-agent init-db
