@@ -11,8 +11,9 @@ from enterprise_agent.models import ChunkSettings
 pytestmark = pytest.mark.integration
 
 
+@pytest.mark.parametrize("method", ["keyword", "pageindex"])
 def test_api_uses_trusted_scope_and_fails_closed_on_invalid_input_or_service_failure(
-    db, documents, monkeypatch, classify_fixture
+    db, documents, monkeypatch, classify_fixture, method
 ):
     pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
@@ -20,9 +21,19 @@ def test_api_uses_trusted_scope_and_fails_closed_on_invalid_input_or_service_fai
     from enterprise_agent import api
 
     ingest(db, documents, ChunkSettings(), limit=2, batch_size=2)
+    if method == "pageindex":
+        pytest.importorskip("pageindex")
+        from enterprise_agent.retrieval.pageindex_selector import (
+            LocalSelector,
+            Selection,
+        )
+        from enterprise_agent.storage.pageindex import build_pageindex
+
+        build_pageindex(db)
+        monkeypatch.setattr(LocalSelector, "select", lambda *_: Selection([1], {}))
     monkeypatch.setattr(api, "connect", lambda: nullcontext(db))
     monkeypatch.delenv("ANSWER_ACCESS_SCOPE", raising=False)
-    question = {"question": "business travel receipts", "method": "keyword"}
+    question = {"question": "business travel receipts", "method": method}
     with TestClient(api.app) as client:
         denied = client.post("/answer", json=question)
         assert denied.status_code == 200 and denied.json()["generation"] is None

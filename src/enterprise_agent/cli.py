@@ -67,9 +67,7 @@ def parser() -> argparse.ArgumentParser:
         command.add_argument("query")
         command.add_argument(
             "--method",
-            choices=("keyword", "dense", "hybrid", "pageindex")
-            if command is search
-            else ("keyword", "dense", "hybrid"),
+            choices=("keyword", "dense", "hybrid", "pageindex"),
             default=method,
         )
         command.add_argument("--top-k", type=positive, default=top_k)

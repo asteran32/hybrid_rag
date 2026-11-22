@@ -32,7 +32,7 @@ class AnswerRequest(BaseModel):
     question: Annotated[
         str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000)
     ]
-    method: Literal["keyword", "dense", "hybrid"] = "hybrid"
+    method: Literal["keyword", "dense", "hybrid", "pageindex"] = "hybrid"
     top_k: int = Field(default=5, ge=1, le=20)
     source_type: str | None = None
     metadata: dict[str, JsonValue] = Field(default_factory=dict)

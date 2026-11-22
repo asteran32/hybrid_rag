@@ -1,6 +1,6 @@
 import pytest
 
-from enterprise_agent.models import EvidenceChunk, SearchHit
+from enterprise_agent.models import EvidenceChunk, PageIndexHit, SearchHit
 from enterprise_agent.validation.citations import (
     PassageRef,
     resolve_citation,
@@ -82,3 +82,20 @@ def test_many_short_lines_have_bounded_labels_and_preserve_source_slices():
             ]
             == passage.text
         )
+
+
+def test_pageindex_selected_tail_survives_budget_and_fresh_read():
+    item = chunk(text="old. " * 40 + "🌿 Friday.")
+    selected = PageIndexHit(
+        **hit(item).model_dump(), matched_spans=[(item.end_offset - 9, item.end_offset)]
+    )
+    current = {"a": item}
+    passages = select_passages([selected], current, 9)
+    citation = resolve_citation(PassageRef("E1.1"), passages, current)
+    assert (citation.quote, citation.start_offset) == (
+        "🌿 Friday.",
+        item.end_offset - 9,
+    )
+    changed = {"a": item.model_copy(update={"content": "changed"})}
+    assert select_passages([selected], changed, 9) == {}
+    assert resolve_citation(PassageRef("E1.1"), passages, changed) is None

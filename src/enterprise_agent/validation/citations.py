@@ -5,7 +5,7 @@ from math import ceil
 
 from pydantic import BaseModel, RootModel
 
-from enterprise_agent.models import DocumentID, EvidenceChunk, SearchHit
+from enterprise_agent.models import DocumentID, EvidenceChunk, PageIndexHit, SearchHit
 
 
 class PassageRef(RootModel[str]):
@@ -61,18 +61,35 @@ def select_passages(
     for hit in hits:
         chunk = stored.get(hit.chunk_id)
         if chunk is not None and chunk.document_id == hit.document_id:
-            ordered.setdefault(chunk.chunk_id, chunk)
+            if isinstance(hit, PageIndexHit) and (
+                hit.start_offset != chunk.start_offset or hit.content != chunk.content
+            ):
+                continue
+            ordered.setdefault(chunk.chunk_id, (chunk, hit))
 
     passages = {}
     remaining = char_budget
     chunks = list(ordered.values())[:char_budget]
-    for index, chunk in enumerate(chunks):
+    for index, (chunk, hit) in enumerate(chunks):
         # Reserve room for lower-ranked evidence, including potential disagreements.
-        text = chunk.content[: remaining // (len(chunks) - index)]
-        for number, (start, end) in enumerate(_spans(text), 1):
-            label = f"E{index + 1}.{number}"
-            passages[label] = Passage(label, chunk, text[start:end], start)
-        remaining -= len(text)
+        allowance = remaining // (len(chunks) - index)
+        ranges = (
+            hit.matched_spans
+            if isinstance(hit, PageIndexHit)
+            else [(chunk.start_offset, chunk.end_offset)]
+        )
+        number = 0
+        for left, right in ranges:
+            local = left - chunk.start_offset
+            text = chunk.content[local : local + min(right - left, allowance)]
+            for start, end in _spans(text):
+                number += 1
+                label = f"E{index + 1}.{number}"
+                passages[label] = Passage(label, chunk, text[start:end], local + start)
+            remaining -= len(text)
+            allowance -= len(text)
+            if not allowance:
+                break
     return passages
 
 
